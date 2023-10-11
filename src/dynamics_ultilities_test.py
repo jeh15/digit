@@ -92,6 +92,15 @@ def main(argv=None):
             q=q,
             qd=qd,
         )
+
+        # Get pose of digit:
+        transform, plant, plant_context = dynamics_utilities.get_transform(
+            plant=plant,
+            context=plant_context,
+            body_name="right-hand_link",
+            base_body_name="right-shoulder-roll_link",
+            q=q,
+        )
         j = 0
 
 
