@@ -42,12 +42,12 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
     # Left Toe A rod:
     rod_a_distance = 0.34
     left_toe_roll_frame = plant.GetFrameByName("left-toe-roll_link")
-    left_tarsus_frame = plant.GetFrameByName("left-tarsus_link")
+    left_toe_a_frame = plant.GetFrameByName("left-toe-A_link")
     left_toe_a_roll_position = np.array([[0.0179, -0.009551, -0.054164]]).T
-    left_tarsus_a_position = np.array([[0.059, -0.034, -0.0276]]).T + np.array([[0.057, 0, -0.008]]).T
+    left_toe_a_position = np.array([[0.057, 0, -0.008]]).T
     plant.AddDistanceConstraint(
-        left_tarsus_frame.body(),
-        left_tarsus_a_position,
+        left_toe_a_frame.body(),
+        left_toe_a_position,
         left_toe_roll_frame.body(),
         left_toe_a_roll_position,
         rod_a_distance,
@@ -55,14 +55,14 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
         damping,
     )
 
-
     # Left Toe B rod:
     rod_b_distance = 0.288
+    left_toe_b_frame = plant.GetFrameByName("left-toe-B_link")
     left_toe_b_roll_position = np.array([[-0.0181, -0.009551, -0.054164]]).T
-    left_tarsus_b_position = np.array([[0.111, -0.034, 0.0276]]).T + np.array([[0.057, 0, -0.008]]).T
+    left_toe_b_position = np.array([[0.057, 0, -0.008]]).T
     plant.AddDistanceConstraint(
-        left_tarsus_frame.body(),
-        left_tarsus_b_position,
+        left_toe_b_frame.body(),
+        left_toe_b_position,
         left_toe_roll_frame.body(),
         left_toe_b_roll_position,
         rod_b_distance,
@@ -72,12 +72,12 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
 
     # Right Toe A rod:
     right_toe_roll_frame = plant.GetFrameByName("right-toe-roll_link")
-    right_tarsus_frame = plant.GetFrameByName("right-tarsus_link")
+    right_toe_a_frame = plant.GetFrameByName("right-toe-A_link")
     right_toe_a_roll_position = np.array([[0.0179, 0.009551, -0.054164]]).T
-    right_tarsus_a_position = np.array([[0.059, 0.034, -0.0276]]).T + np.array([[0.057, 0, -0.008]]).T
+    right_toe_a_position = np.array([[0.057, 0, -0.008]]).T
     plant.AddDistanceConstraint(
-        right_tarsus_frame.body(),
-        right_tarsus_a_position,
+        right_toe_a_frame.body(),
+        right_toe_a_position,
         right_toe_roll_frame.body(),
         right_toe_a_roll_position,
         rod_a_distance,
@@ -86,11 +86,12 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
     )
 
     # Right Toe B rod:
+    right_toe_b_frame = plant.GetFrameByName("right-toe-B_link")
     right_toe_b_roll_position = np.array([[-0.0181, 0.009551, -0.054164]]).T
-    right_tarsus_b_position = np.array([[0.111, 0.034, 0.0276]]).T + np.array([[0.057, 0, -0.008]]).T
+    right_toe_b_position = np.array([[0.057, 0, -0.008]]).T
     plant.AddDistanceConstraint(
-        right_tarsus_frame.body(),
-        right_tarsus_b_position,
+        right_toe_b_frame.body(),
+        right_toe_b_position,
         right_toe_roll_frame.body(),
         right_toe_b_roll_position,
         rod_b_distance,

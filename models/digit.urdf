@@ -913,6 +913,27 @@
         <dynamics friction="1" damping="1"/>
     </joint>
 
+    <link name="left-toe-A_visual">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.02"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+    <joint name="left-toe-A_visual_joint" type="fixed">
+        <origin xyz="0.057 0 -0.008" rpy="0.005934119 0.03735005 -1.5437437"/>
+        <parent link="left-toe-A_link"/>
+        <child link="left-toe-A_visual"/>
+    </joint>
+
     <drake:joint name="left-toe-A-rod_joint" type="ball">
         <origin xyz="0.057 0 -0.008" rpy="0.005934119 0.03735005 -1.5437437"/>
         <parent link="left-toe-A_link"/>

@@ -12,7 +12,7 @@ def main(argv=None):
     meshcat = StartMeshcat()
 
     # Load XML file:
-    xml_path = "models/digit_open.urdf"
+    xml_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
