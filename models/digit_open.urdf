@@ -308,7 +308,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 -0.279253"/>
             <geometry>
-                <mesh filename="obj/arm-L1.obj"/>
+                <mesh filename="obj/arm-l1.obj"/>
             </geometry>
             <material name="light-gray"/>
         </visual>
@@ -323,7 +323,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-L2.obj"/>
+                <mesh filename="obj/arm-l2.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -344,7 +344,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-L3.obj"/>
+                <mesh filename="obj/arm-l3.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -371,7 +371,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-L4.obj"/>
+                <mesh filename="obj/arm-l4.obj"/>
             </geometry>
             <material name="dark-gray"/>
         </visual>
@@ -619,7 +619,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0.279253"/>
             <geometry>
-                <mesh filename="obj/arm-L1-xz.obj"/>
+                <mesh filename="obj/arm-l1-xz.obj"/>
             </geometry>
             <material name="light-gray"/>
         </visual>
@@ -634,7 +634,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-L2-xz.obj"/>
+                <mesh filename="obj/arm-l2-xz.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -655,7 +655,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-L3-xz.obj"/>
+                <mesh filename="obj/arm-l3-xz.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -682,7 +682,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-L4-xz.obj"/>
+                <mesh filename="obj/arm-l4-xz.obj"/>
             </geometry>
             <material name="dark-gray"/>
         </visual>

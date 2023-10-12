@@ -100,38 +100,39 @@ def main(argv=None):
         simulator.AdvanceTo(target_time)
 
         # Dynamics Utilities:
-        q = q + np.sin(current_time) * np.ones(plant.num_positions())
-        M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
-            plant=plant,
-            context=plant_context,
-            q=q,
-            qd=qd,
-        )
+        # q = q + np.sin(current_time) * np.ones(plant.num_positions())
+        # M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
+        #     plant=plant,
+        #     context=plant_context,
+        #     q=q,
+        #     qd=qd,
+        # )
 
-        # Get pose of digit:
-        transform, plant, plant_context = dynamics_utilities.get_transform(
-            plant=plant,
-            context=plant_context,
-            body_name="right-hand_link",
-            base_body_name="right-shoulder-roll_link",
-            q=q,
-        )
+        # # Get pose of digit:
+        # transform, plant, plant_context = dynamics_utilities.get_transform(
+        #     plant=plant,
+        #     context=plant_context,
+        #     body_name="right-hand_link",
+        #     base_body_name="right-shoulder-roll_link",
+        #     q=q,
+        # )
 
-        task_space_jacobian = dynamics_utilities.calculate_task_space_jacobian(
-            plant=plant,
-            context=plant_context,
-            body_name="right-hand_link",
-            base_body_name="base_link",
-        )
+        # task_space_jacobian = dynamics_utilities.calculate_task_space_jacobian(
+        #     plant=plant,
+        #     context=plant_context,
+        #     body_name="right-hand_link",
+        #     base_body_name="base_link",
+        # )
 
         # # Control:
+        actuation_idx = [4, 14]
         conxtext = simulator.get_context()
-        # actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        # actuation_vector = 5 * np.sin(current_time) * np.ones(plant.num_actuators())
-        # mutable_actuation_vector = actuation_source.get_mutable_source_value(
-        #     actuation_context,
-        # )
-        # mutable_actuation_vector.set_value(actuation_vector)
+        actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
+        actuation_vector[actuation_idx] = 5 * np.sin(current_time) * np.ones(plant.num_actuators())
+        mutable_actuation_vector = actuation_source.get_mutable_source_value(
+            actuation_context,
+        )
+        mutable_actuation_vector.set_value(actuation_vector)
 
         # Get current time and set target time:
         current_time = conxtext.get_time()
