@@ -139,11 +139,14 @@ def main(argv=None):
         B[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
 
         # OSC:
-        ddx_desired = np.array([0, 0, 0, 0, 0, -1 * np.sin(current_time)])
+        ddx_desired = np.array([0, 0, 0, 0, -1 * np.sin(current_time), 0])
 
         prog = MathematicalProgram()
         dv = prog.NewContinuousVariables(plant.num_velocities(), "dv")
         u = prog.NewContinuousVariables(plant.num_actuators(), "u")
+        prog.AddBoundingBoxConstraint(
+            -15, 15, u,
+        )
         dynamics = M @ dv + C + tau_g
         control = B @ u
         for i in range(plant.num_velocities()):
@@ -156,19 +159,15 @@ def main(argv=None):
         )
 
         results = Solve(prog)
-        results.GetSolution(u)
+        u = results.GetSolution(u)
 
-        j = 0
-
-
-        # actuation_idx = [4, 14]
-        # conxtext = simulator.get_context()
-        # actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        # actuation_vector[actuation_idx] = 5 * np.sin(current_time) * np.ones(plant.num_actuators())[actuation_idx]
-        # mutable_actuation_vector = actuation_source.get_mutable_source_value(
-        #     actuation_context,
-        # )
-        # mutable_actuation_vector.set_value(actuation_vector)
+        conxtext = simulator.get_context()
+        actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
+        actuation_vector = u
+        mutable_actuation_vector = actuation_source.get_mutable_source_value(
+            actuation_context,
+        )
+        mutable_actuation_vector.set_value(actuation_vector)
 
         # Get current time and set target time:
         current_time = conxtext.get_time()
