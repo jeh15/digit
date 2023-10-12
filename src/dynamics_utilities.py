@@ -97,19 +97,50 @@ def get_transform(
 
     # Get frame of body and base body:
     frame_body = plant.GetFrameByName(body_name)
-    frame_relative_body = plant.GetFrameByName(base_body_name)
+    frame_base_body = plant.GetFrameByName(base_body_name)
 
     transform_object = plant.CalcRelativeTransform(
         context=context,
         frame_A=frame_body,
-        frame_B=frame_relative_body,
+        frame_B=frame_base_body,
     )
 
     return transform_object, plant, context
 
 
-def calculate_task_space_jacobian():
+def calculate_task_space_jacobian(
+    plant: MultibodyPlant,
+    context: Context,
+    body_name: str,
+    base_body_name: str,
+) -> np.ndarray:
+    """
+    Compute the jacobian of the position vector in task space.
+
+    Args:
+        plant: The MultibodyPlant.
+        context: Context of the plant.
+        body_name: Name of body.
+        base_body_name: Name of the base body to calculate the
+                        transform with respects to.
+
+    Returns:
+        task_space_jacobian: The jacobian of the position vector
+                             in task space.
+
+    """
+    # Get frame of body and base body:
+    frame_body = plant.GetFrameByName(body_name)
+    frame_base_body = plant.GetFrameByName(base_body_name)
+    frame_world = plant.world_frame()
+
+    # Calculate the jacobian of the position vector in task space:
     task_space_jacobian = plant.CalcJacobianPositionVector(
         context=context,
-        
+        frame_B=frame_body,
+        p_BoBi_B=np.zeros((3, 1)),
+        frame_A=frame_base_body,
+        frame_E=frame_base_body,
     )
+
+    return task_space_jacobian

@@ -749,7 +749,7 @@
         <dynamics friction="0.5" damping="1"/>
     </joint>
 
-    <joint name="left-shin_joint" type="continuous">
+    <joint name="left-shin_joint" type="fixed">
         <origin xyz="0.060677 0.047406 0" rpy="0 0 0"/>
         <parent link="left-knee_link"/>
         <child link="left-shin_link"/>
@@ -899,7 +899,7 @@
         <dynamics friction="0.5" damping="1"/>
     </joint>
 
-    <joint name="right-shin_joint" type="continuous">
+    <joint name="right-shin_joint" type="fixed">
         <origin xyz="0.060677 -0.047406 0" rpy="0 0 0"/>
         <parent link="right-knee_link"/>
         <child link="right-shin_link"/>

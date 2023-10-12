@@ -56,15 +56,16 @@ def main(argv=None):
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
 
-    # Spoof:
     # Connect Vector Source to Digit's Actuators:
-    zero_vector = np.zeros(
+    actuation_vector = np.zeros(
         plant.num_actuators(),
         dtype=np.float64,
     )
-    zero_source = builder.AddSystem(ConstantVectorSource(zero_vector))
+    actuation_source = builder.AddSystem(
+        ConstantVectorSource(actuation_vector),
+    )
     builder.Connect(
-        zero_source.get_output_port(),
+        actuation_source.get_output_port(),
         plant.get_actuation_input_port(),
     )
 
@@ -81,11 +82,25 @@ def main(argv=None):
     # Build diagram:
     diagram = builder.Build()
 
+    # Create simulator:
+    simulator = Simulator(diagram)
+    simulator.set_target_realtime_rate(1.0)
+    simulator.Initialize()
+
+    end_time = 60.0
+    dt = 0.001
+    current_time = 0.0
+    target_time = dt
+
     # Manually change states:
     q = np.zeros(plant.num_positions())
     qd = np.zeros(plant.num_velocities())
-    for i in range(1000):
-        q = q + np.sin(i) * np.ones(plant.num_positions())
+    while current_time < end_time:
+        # Advance simulation:
+        simulator.AdvanceTo(target_time)
+
+        # Dynamics Utilities:
+        q = q + np.sin(current_time) * np.ones(plant.num_positions())
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -101,7 +116,26 @@ def main(argv=None):
             base_body_name="right-shoulder-roll_link",
             q=q,
         )
-        j = 0
+
+        task_space_jacobian = dynamics_utilities.calculate_task_space_jacobian(
+            plant=plant,
+            context=plant_context,
+            body_name="right-hand_link",
+            base_body_name="base_link",
+        )
+
+        # # Control:
+        conxtext = simulator.get_context()
+        # actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
+        # actuation_vector = 5 * np.sin(current_time) * np.ones(plant.num_actuators())
+        # mutable_actuation_vector = actuation_source.get_mutable_source_value(
+        #     actuation_context,
+        # )
+        # mutable_actuation_vector.set_value(actuation_vector)
+
+        # Get current time and set target time:
+        current_time = conxtext.get_time()
+        target_time = current_time + dt
 
 
 if __name__ == "__main__":
