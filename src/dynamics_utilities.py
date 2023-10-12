@@ -5,6 +5,7 @@ import numpy.typing as npt
 from pydrake.multibody.plant import MultibodyPlant
 from pydrake.systems.framework import Context
 from pydrake.math import RigidTransform
+from pydrake.multibody.tree import JacobianWrtVariable
 
 
 def get_dynamics(
@@ -108,14 +109,16 @@ def get_transform(
     return transform_object, plant, context
 
 
-def calculate_task_space_jacobian(
+def calculate_task_space_matricies(
     plant: MultibodyPlant,
     context: Context,
     body_name: str,
     base_body_name: str,
-) -> np.ndarray:
+    q: npt.ArrayLike,
+    qd: npt.ArrayLike,
+) -> [np.ndarray, np.ndarray, np.ndarray]:
     """
-    Compute the jacobian of the position vector in task space.
+    Compute the task space transform, jacobian of the position vector in task space, and bias terms.
 
     Args:
         plant: The MultibodyPlant.
@@ -123,24 +126,60 @@ def calculate_task_space_jacobian(
         body_name: Name of body.
         base_body_name: Name of the base body to calculate the
                         transform with respects to.
+        q: Generalized positions.
+        qd: Generalized velocities.
 
     Returns:
+        task_space_transform: The transform of the body relative to the base body.
         task_space_jacobian: The jacobian of the position vector
                              in task space.
+        task_space_bias_terms: The bias terms in task space.
 
     """
+    # Update plant model to the current state:
+    plant.SetPositions(
+        context=context,
+        q=q,
+    )
+    plant.SetVelocities(
+        context=context,
+        v=qd,
+    )
+
     # Get frame of body and base body:
     frame_body = plant.GetFrameByName(body_name)
     frame_base_body = plant.GetFrameByName(base_body_name)
     frame_world = plant.world_frame()
 
-    # Calculate the jacobian of the position vector in task space:
-    task_space_jacobian = plant.CalcJacobianPositionVector(
+    # Calculate the task space transform:
+    task_space_transform = plant.CalcRelativeTransform(
         context=context,
+        frame_A=frame_body,
+        frame_B=frame_base_body,
+    )
+
+    # Calculate the jacobian of the position vector in task space:
+    spatial_velocity_jacobian = plant.CalcJacobianSpatialVelocity(
+        context=context,
+        with_respect_to=JacobianWrtVariable.kV,
         frame_B=frame_body,
-        p_BoBi_B=np.zeros((3, 1)),
+        p_BoBp_B=np.zeros((3, 1)),
         frame_A=frame_base_body,
         frame_E=frame_base_body,
     )
 
-    return task_space_jacobian
+    # Calculate the bias terms in task space:
+    bias_spatial_acceleration = plant.CalcBiasSpatialAcceleration(
+        context=context,
+        with_respect_to=JacobianWrtVariable.kV,
+        frame_B=frame_body,
+        p_BoBp_B=np.zeros((3, 1)),
+        frame_A=frame_base_body,
+        frame_E=frame_base_body,
+    ).get_coeffs()
+
+    return (
+        task_space_transform,
+        spatial_velocity_jacobian,
+        bias_spatial_acceleration,
+    )

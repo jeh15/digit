@@ -14,6 +14,7 @@ from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContact
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.systems.primitives import ConstantVectorSource
+from pydrake.solvers import MathematicalProgram, Solve
 
 # Custom Imports:
 import dynamics_utilities
@@ -92,15 +93,14 @@ def main(argv=None):
     current_time = 0.0
     target_time = dt
 
-    # Manually change states:
-    q = np.zeros(plant.num_positions())
-    qd = np.zeros(plant.num_velocities())
     while current_time < end_time:
         # Advance simulation:
         simulator.AdvanceTo(target_time)
 
         # Dynamics Utilities:
-        q = q + np.sin(current_time) * np.ones(plant.num_positions())
+        q = plant.GetPositions(plant_context)
+        qd = plant.GetVelocities(plant_context)
+
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -109,13 +109,13 @@ def main(argv=None):
         )
 
         # Get pose of digit:
-        transform, plant, plant_context = dynamics_utilities.get_transform(
-            plant=plant,
-            context=plant_context,
-            body_name="right-hand_link",
-            base_body_name="right-shoulder-roll_link",
-            q=q,
-        )
+        # transform, plant, plant_context = dynamics_utilities.get_transform(
+        #     plant=plant,
+        #     context=plant_context,
+        #     body_name="right-hand_link",
+        #     base_body_name="base_link",
+        #     q=q,
+        # )
 
         task_space_transform, spatial_velocity_jacobian, bias_spatial_acceleration = dynamics_utilities.calculate_task_space_matricies(
             plant=plant,
@@ -126,9 +126,41 @@ def main(argv=None):
             qd=qd,
         )
 
+        left_leg_act_ids = [0, 1, 2, 3, 4, 5]
+        left_arm_act_ids = [6, 7, 8, 9]
+        right_leg_act_ids = [10, 11, 12, 13, 14, 15]
+        right_arm_act_ids = [16, 17, 18, 19]
+        left_leg_act_joint_ids = [0, 1, 2, 3, 6, 7]
+        left_arm_act_joint_ids = [10, 11, 12, 13]
+        right_leg_act_joint_ids  = [14, 15, 16, 17, 20, 21]
+        right_arm_act_joint_ids = [24, 25, 26, 27]
+
+        B = np.zeros((plant.num_velocities(), plant.num_actuators()))
+        B[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
+
+        # OSC:
+        ddx_desired = np.array([0, 0, 0, 0, 0, -1 * np.sin(current_time)])
+
+        prog = MathematicalProgram()
+        dv = prog.NewContinuousVariables(plant.num_velocities(), "dv")
+        u = prog.NewContinuousVariables(plant.num_actuators(), "u")
+        dynamics = M @ dv + C + tau_g
+        control = B @ u
+        for i in range(plant.num_velocities()):
+            prog.AddLinearConstraint(
+                dynamics[i] - control[i] == 0,
+            )
+        ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
+        prog.AddQuadraticCost(
+            np.sum((ddx_desired - ddx_task) ** 2),
+        )
+
+        results = Solve(prog)
+        results.GetSolution(u)
+
         j = 0
 
-        # # Control:
+
         # actuation_idx = [4, 14]
         # conxtext = simulator.get_context()
         # actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
@@ -138,9 +170,9 @@ def main(argv=None):
         # )
         # mutable_actuation_vector.set_value(actuation_vector)
 
-        # # Get current time and set target time:
-        # current_time = conxtext.get_time()
-        # target_time = current_time + dt
+        # Get current time and set target time:
+        current_time = conxtext.get_time()
+        target_time = current_time + dt
 
 
 if __name__ == "__main__":
