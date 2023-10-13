@@ -145,6 +145,26 @@
         </collision>
     </link>
 
+    <link name="left-achilles-rod_link">
+        <interial>
+            <origin xyz="0.2506 0 0" rpy="0 0 0"/>
+            <mass value="0.178148"/>
+            <inertia ixx="3e-06" iyy="0.004501" izz="0.004501" ixy="0" ixz="0" iyz="0"/>
+        </interial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="obj/achilles-rod.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.25 0 0" rpy="0.0698132 1.5708 0"/>
+            <geometry>
+                <capsule radius="0.007" length="0.25"/>
+            </geometry>
+        </collision>
+    </link>
+
     <link name="left-knee_link">
         <inertial>
             <origin xyz="0.045641 0.042154 0.001657" rpy="0 0 0"/>
@@ -244,6 +264,26 @@
         </visual>
     </link>
 
+    <link name="left-toe-A-rod_link">
+        <inertial>
+            <origin xyz="0.171071 0 0" rpy="0 0 0"/>
+            <mass value="0.090983"/>
+            <inertia ixx="1e-06" iyy="0.001182" izz="0.001182" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="obj/toe-A-rod.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.17 0 0" rpy="0.0698132 1.5708 0"/>
+            <geometry>
+                <capsule radius="0.007" length="0.17"/>
+            </geometry>
+        </collision>
+    </link>
+
     <link name="left-toe-B_link">
         <inertial>
             <origin xyz="0.005161 1e-06 -0.002248" rpy="0 0 0"/>
@@ -257,6 +297,26 @@
             </geometry>
             <material name="light-gray"/>
         </visual>
+    </link>
+
+    <link name="left-toe-B-rod_link">
+        <inertial>
+            <origin xyz="0.142991 0 0" rpy="0 0 0"/>
+            <mass value="0.079507"/>
+            <inertia ixx="1e-06" iyy="0.000768" izz="0.000768" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="obj/toe-B-rod.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.144 0 0" rpy="0.0698132 1.5708 0"/>
+            <geometry>
+                <capsule radius="0.007" length="0.144"/>
+            </geometry>
+        </collision>
     </link>
 
     <link name="left-toe-pitch_link">
@@ -308,7 +368,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 -0.279253"/>
             <geometry>
-                <mesh filename="obj/arm-l1.obj"/>
+                <mesh filename="obj/arm-L1.obj"/>
             </geometry>
             <material name="light-gray"/>
         </visual>
@@ -323,7 +383,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-l2.obj"/>
+                <mesh filename="obj/arm-L2.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -344,7 +404,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-l3.obj"/>
+                <mesh filename="obj/arm-L3.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -371,7 +431,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-l4.obj"/>
+                <mesh filename="obj/arm-L4.obj"/>
             </geometry>
             <material name="dark-gray"/>
         </visual>
@@ -452,6 +512,26 @@
             <origin xyz="0.06 0 -0.04" rpy="-0 0 -0"/>
             <geometry>
                 <box size="0.06 0.05 0.072"/>
+            </geometry>
+        </collision>
+    </link>
+
+    <link name="right-achilles-rod_link">
+        <interial>
+            <origin xyz="0.2506 0 0" rpy="0 0 0"/>
+            <mass value="0.178148"/>
+            <inertia ixx="3e-06" iyy="0.004501" izz="0.004501" ixy="0" ixz="0" iyz="0"/>
+        </interial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="obj/achilles-rod.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.25 0 0" rpy="-0.0698132 1.5708 0"/>
+            <geometry>
+                <capsule radius="0.007" length="0.25"/>
             </geometry>
         </collision>
     </link>
@@ -555,6 +635,26 @@
         </visual>
     </link>
 
+    <link name="right-toe-A-rod_link">
+        <inertial>
+            <origin xyz="0.171071 0 0" rpy="0 0 0"/>
+            <mass value="0.090983"/>
+            <inertia ixx="1e-06" iyy="0.001182" izz="0.001182" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="obj/toe-a-rod-xz.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.17 0 0" rpy="-0.0698132 1.5708 0"/>
+            <geometry>
+                <capsule radius="0.007" length="0.17"/>
+            </geometry>
+        </collision>
+    </link>
+
     <link name="right-toe-B_link">
         <inertial>
             <origin xyz="0.005161 -1e-06 -0.002248" rpy="0 0 0"/>
@@ -568,6 +668,26 @@
             </geometry>
             <material name="light-gray"/>
         </visual>
+    </link>
+
+    <link name="right-toe-B-rod_link">
+        <inertial>
+            <origin xyz="0.142991 0 0" rpy="0 0 0"/>
+            <mass value="0.079507"/>
+            <inertia ixx="1e-06" iyy="0.000768" izz="0.000768" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="obj/toe-B-rod-xz.obj"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin xyz="0.144 0 0" rpy="-0.0698132 1.5708 0"/>
+            <geometry>
+                <capsule radius="0.007" length="0.144"/>
+            </geometry>
+        </collision>
     </link>
 
     <link name="right-toe-pitch_link">
@@ -619,7 +739,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0.279253"/>
             <geometry>
-                <mesh filename="obj/arm-l1-xz.obj"/>
+                <mesh filename="obj/arm-L1-xz.obj"/>
             </geometry>
             <material name="light-gray"/>
         </visual>
@@ -634,7 +754,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-l2-xz.obj"/>
+                <mesh filename="obj/arm-L2-xz.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -655,7 +775,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-l3-xz.obj"/>
+                <mesh filename="obj/arm-L3-xz.obj"/>
             </geometry>
             <material name="medium-gray"/>
         </visual>
@@ -682,7 +802,7 @@
         <visual>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <geometry>
-                <mesh filename="obj/arm-l4-xz.obj"/>
+                <mesh filename="obj/arm-L4-xz.obj"/>
             </geometry>
             <material name="dark-gray"/>
         </visual>
@@ -705,7 +825,7 @@
     <!-- Base Joint: -->
 
     <joint name="base_joint" type="floating">
-        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <origin xyz="0 0 0" rpy="-0 0 -0"/>
         <parent link="world"/>
         <child link="base_link"/>
     </joint>
@@ -713,6 +833,7 @@
     <!-- Joints: Left Leg -->
 
     <joint name="left-hip-roll_joint" type="revolute">
+        <!-- Original has r as 0.3752458 (May effect Nominal Position) -->
         <origin xyz="-0.001 0.091 0" rpy="0 -1.5708 0"/>
         <parent link="base_link"/>
         <child link="left-hip-roll_link"/>
@@ -739,6 +860,14 @@
         <dynamics friction="0.5" damping="1"/>
     </joint>
 
+    <drake:joint name="left-achilles-rod_joint" type="ball">
+        <origin xyz="0 0 0.046" rpy="0.07138397 0.0008726646 -1.4358824"/>
+        <parent link="left-hip-pitch_link"/>
+        <child link="left-achilles-rod_link"/>
+        <axis xyz='0 0 1'/>
+        <dynamics friction="0" damping="0.01"/>
+    </drake:joint>
+
     <joint name="left-knee_joint" type="revolute">
         <!-- Custom Tuned: -->
         <origin xyz="-0.085 0.085 0.0045" rpy="0 0 0.785398"/>
@@ -749,7 +878,7 @@
         <dynamics friction="0.5" damping="1"/>
     </joint>
 
-    <joint name="left-shin_joint" type="fixed">
+    <joint name="left-shin_joint" type="continuous">
         <origin xyz="0.060677 0.047406 0" rpy="0 0 0"/>
         <parent link="left-knee_link"/>
         <child link="left-shin_link"/>
@@ -784,6 +913,35 @@
         <dynamics friction="1" damping="1"/>
     </joint>
 
+    <link name="left-toe-A_visual">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.02"/>
+            </geometry>
+            <material name="black"/>
+        </visual>
+    </link>
+
+    <joint name="left-toe-A_visual_joint" type="fixed">
+        <origin xyz="0.057 0 -0.008" rpy="0.005934119 0.03735005 -1.5437437"/>
+        <parent link="left-toe-A_link"/>
+        <child link="left-toe-A_visual"/>
+    </joint>
+
+    <drake:joint name="left-toe-A-rod_joint" type="ball">
+        <origin xyz="0.057 0 -0.008" rpy="0.005934119 0.03735005 -1.5437437"/>
+        <parent link="left-toe-A_link"/>
+        <child link="left-toe-A-rod_link"/>
+        <axis xyz='0 0 1'/>
+        <dynamics friction="0" damping="0.01"/>
+    </drake:joint>
+
     <joint name="left-toe-B_joint" type="revolute">
         <origin xyz="0.111 -0.034 0.0276" rpy="0 0 -1.5526449"/>
         <parent link="left-tarsus_link"/>
@@ -792,6 +950,14 @@
         <limit lower="-0.8009630097" upper="0.7949555864" effort="300" velocity="6.283"/>
         <dynamics friction="1" damping="1"/>
     </joint>
+
+    <drake:joint name="left-toe-B-rod_joint" type="ball">
+        <origin xyz="0.057 0 -0.008" rpy="-0.0038397244 -0.05375614 1.5418239"/>
+        <parent link="left-toe-B_link"/>
+        <child link="left-toe-B-rod_link"/>
+        <axis xyz='0 0 1'/>
+        <dynamics friction="0" damping="0.01"/>
+    </drake:joint>
 
     <joint name="left-toe-pitch_joint" type="revolute">
         <origin xyz="0.408 -0.04 0" rpy="0 0 1.2522737"/>
@@ -890,6 +1056,14 @@
         <dynamics friction="0.5" damping="1"/>
     </joint>
 
+    <drake:joint name="right-achilles-rod_joint" type="ball">
+        <origin xyz="0 0 0.046" rpy="-0.07138397 0.0008726646 1.4358824"/>
+        <parent link="right-hip-pitch_link"/>
+        <child link="right-achilles-rod_link"/>
+        <axis xyz='0 0 1'/>
+        <dynamics friction="0" damping="0.01"/>
+    </drake:joint>
+
     <joint name="right-knee_joint" type="revolute">
         <origin xyz="-0.085 -0.085 0.0045" rpy="0 0 -0.785398"/>
         <parent link="right-hip-pitch_link"/>
@@ -899,7 +1073,7 @@
         <dynamics friction="0.5" damping="1"/>
     </joint>
 
-    <joint name="right-shin_joint" type="fixed">
+    <joint name="right-shin_joint" type="continuous">
         <origin xyz="0.060677 -0.047406 0" rpy="0 0 0"/>
         <parent link="right-knee_link"/>
         <child link="right-shin_link"/>
@@ -934,6 +1108,14 @@
         <dynamics friction="1" damping="1"/>
     </joint>
 
+    <drake:joint name="right-toe-A-rod_joint" type="ball">
+        <origin xyz="0.057 0 -0.008" rpy="-0.005934119 0.03735005 1.5437437"/>
+        <parent link="right-toe-A_link"/>
+        <child link="right-toe-A-rod_link"/>
+        <axis xyz='0 0 1'/>
+        <dynamics friction="0" damping="0.01"/>
+    </drake:joint>
+
     <joint name="right-toe-B_joint" type="revolute">
         <origin xyz="0.111 0.034 0.0276" rpy="0 0 1.5526449"/>
         <parent link="right-tarsus_link"/>
@@ -942,6 +1124,14 @@
         <limit lower="-0.7949555864" upper="0.8009630097" effort="300" velocity="6.283"/>
         <dynamics friction="1" damping="1"/>
     </joint>
+
+    <drake:joint name="right-toe-B-rod_joint" type="ball">
+        <origin xyz="0.057 0 -0.008" rpy="0.0038397244 -0.05375614 -1.5418239"/>
+        <parent link="right-toe-B_link"/>
+        <child link="right-toe-B-rod_link"/>
+        <axis xyz='0 0 1'/>
+        <dynamics friction="0" damping="0.01"/>
+    </drake:joint>
 
     <joint name="right-toe-pitch_joint" type="revolute">
         <origin xyz="0.408 0.04 0" rpy="0 0 -1.2522737"/>
@@ -1063,15 +1253,15 @@
         </actuator>
     </transmission>
 
-    <transmission name="left-toe-B">
+    <trbnsmission nbme="left-toe-B">
         <type>transmission_interface/SimpleTransmission</type>
-        <joint name="left-toe-B_joint">
+        <joint nbme="left-toe-B_joint">
             <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
         </joint>
-        <actuator name="left-toe-B_motor">
-            <mechanicalReduction>1.0</mechanicalReduction>
-        </actuator>
-    </transmission>
+        <bctubtor nbme="left-toe-B_motor">
+            <mechbnicblReduction>1.0</mechbnicblReduction>
+        </bctubtor>
+    </trbnsmission>
 
     <transmission name="left-shoulder-roll">
         <type>transmission_interface/SimpleTransmission</type>
@@ -1163,15 +1353,15 @@
         </actuator>
     </transmission>
 
-    <transmission name="right-toe-B">
+    <trbnsmission nbme="right-toe-B">
         <type>transmission_interface/SimpleTransmission</type>
-        <joint name="right-toe-B_joint">
+        <joint nbme="right-toe-B_joint">
             <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
         </joint>
-        <actuator name="right-toe-B_motor">
-            <mechanicalReduction>1.0</mechanicalReduction>
-        </actuator>
-    </transmission>
+        <bctubtor nbme="right-toe-B_motor">
+            <mechbnicblReduction>1.0</mechbnicblReduction>
+        </bctubtor>
+    </trbnsmission>
 
     <transmission name="right-shoulder-roll">
         <type>transmission_interface/SimpleTransmission</type>

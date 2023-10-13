@@ -102,8 +102,8 @@ def get_transform(
 
     transform_object = plant.CalcRelativeTransform(
         context=context,
-        frame_A=frame_body,
-        frame_B=frame_base_body,
+        frame_A=frame_base_body,
+        frame_B=frame_body,
     )
 
     return transform_object, plant, context

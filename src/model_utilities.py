@@ -1,8 +1,10 @@
 import numpy as np
-from pydrake.multibody.plant import MultibodyPlant
+from pydrake.multibody.plant import MultibodyPlant, CoulombFriction
+from pydrake.math import RigidTransform
+from pydrake.geometry import HalfSpace
 
 
-def apply_kinematic_constraints(plant: MultibodyPlant):
+def apply_kinematic_constraints(plant: MultibodyPlant) -> MultibodyPlant:
     # Add SAP Constraints for closed kinematic chains:
     achilles_distance = 0.5
     left_heel_spring_frame = plant.GetFrameByName("left-heel-spring_link")
@@ -97,6 +99,46 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
         rod_b_distance,
         stiffness,
         damping,
+    )
+
+    return plant
+
+
+def add_terrian(
+    plant: MultibodyPlant,
+    mu_static: float = 0.5,
+    mu_dynamic: float = 0.5,
+) -> MultibodyPlant:
+    """
+    Add a flat ground plane to the plant.
+
+    Utility function adapted from DAIRLab's dairlib.
+
+    Source:
+    https://github.com/DAIRLab/dairlib/blob/f2bc1ae1ae7d45f4b8ba731480eac3ce484b2b09/multibody/multibody_utils.cc#L122
+    """
+    friction = CoulombFriction(
+        static_friction=mu_static, dynamic_friction=mu_dynamic,
+    )
+    halfspace = HalfSpace().MakePose(
+        Hz_dir_F=np.array([0, 0, 1]), p_FB=np.array([0, 0, 0]),
+    )
+    transform = RigidTransform(
+        halfspace,
+    )
+    plant.RegisterCollisionGeometry(
+        body=plant.world_body(),
+        X_BG=transform,
+        shape=HalfSpace(),
+        name="ground_collision",
+        coulomb_friction=friction,
+    )
+    plant.RegisterVisualGeometry(
+        body=plant.world_body(),
+        X_BG=transform,
+        shape=HalfSpace(),
+        name="ground_visual",
+        diffuse_color=[0.5, 0.5, 0.5, 1.0],
     )
 
     return plant

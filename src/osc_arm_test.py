@@ -23,7 +23,7 @@ import model_utilities
 
 def main(argv=None):
     # Load URDF file:
-    urdf_path = "models/digit_open.urdf"
+    urdf_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -122,14 +122,8 @@ def main(argv=None):
             qd=qd,
         )
 
-        left_leg_act_ids = [0, 1, 2, 3, 4, 5]
         left_arm_act_ids = [6, 7, 8, 9]
-        right_leg_act_ids = [10, 11, 12, 13, 14, 15]
-        right_arm_act_ids = [16, 17, 18, 19]
-        left_leg_act_joint_ids = [0, 1, 2, 3, 6, 7]
         left_arm_act_joint_ids = [10, 11, 12, 13]
-        right_leg_act_joint_ids  = [14, 15, 16, 17, 20, 21]
-        right_arm_act_joint_ids = [24, 25, 26, 27]
 
         B = np.zeros((plant.num_velocities(), plant.num_actuators()))
         B[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
