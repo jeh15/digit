@@ -97,6 +97,11 @@ def main(argv=None):
         # Advance simulation:
         simulator.AdvanceTo(target_time)
 
+        # Get current context:
+        context = simulator.get_context()
+        plant_context = plant.GetMyContextFromRoot(context)
+        actuation_context = actuation_source.GetMyContextFromRoot(context)
+
         # Dynamics Utilities:
         q = plant.GetPositions(plant_context)
         qd = plant.GetVelocities(plant_context)
@@ -108,20 +113,11 @@ def main(argv=None):
             qd=qd,
         )
 
-        # Get pose of digit:
-        # transform, plant, plant_context = dynamics_utilities.get_transform(
-        #     plant=plant,
-        #     context=plant_context,
-        #     body_name="right-hand_link",
-        #     base_body_name="base_link",
-        #     q=q,
-        # )
-
         task_space_transform, spatial_velocity_jacobian, bias_spatial_acceleration = dynamics_utilities.calculate_task_space_matricies(
             plant=plant,
             context=plant_context,
-            body_name="right-hand_link",
-            base_body_name="base_link",
+            body_name="left-hand_link",
+            base_body_name="world",
             q=q,
             qd=qd,
         )
@@ -139,15 +135,41 @@ def main(argv=None):
         B[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
 
         # OSC:
-        ddx_desired = np.array([0, 0, 0, 0, -1 * np.sin(current_time), 0])
+        time = context.get_time()
+        a = (1/4)
+        rate = a * time
+        r = 0.2
+        xc = 0.3
+        yc = 0.3
+
+        x = xc + r * np.cos(rate)
+        y = yc + r * np.sin(rate)
+
+        dx = -r * a * np.sin(rate)
+        dy = r * a * np.cos(rate)
+
+        ddx = -r * a * a * np.cos(rate)
+        ddy = -r * a * a * np.sin(rate)
+
+        zero_vector = np.zeros((3,))
+        ddx_desired = np.array([0, 0, 0, 0, ddx, ddy])
+        dx_desired = np.array([0, 0, 0, 0, dx, dy])
+        x_desired = np.array([0, 0, 0, 0.5, x, y])
+        kp = 500
+        kd = 2 * np.sqrt(kp)
+        task_position = task_space_transform.translation()
+        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
+        x_task = np.concatenate([zero_vector, task_position])
+        dx_task = np.concatenate([zero_vector, task_velocity])
+        control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
         prog = MathematicalProgram()
         dv = prog.NewContinuousVariables(plant.num_velocities(), "dv")
         u = prog.NewContinuousVariables(plant.num_actuators(), "u")
         prog.AddBoundingBoxConstraint(
-            -15, 15, u,
+            -100, 100, u,
         )
-        dynamics = M @ dv + C + tau_g
+        dynamics = M @ dv + C - tau_g
         control = B @ u
         for i in range(plant.num_velocities()):
             prog.AddLinearConstraint(
@@ -155,7 +177,7 @@ def main(argv=None):
             )
         ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
         prog.AddQuadraticCost(
-            np.sum((ddx_desired - ddx_task) ** 2),
+            np.sum((ddx_task - control_desired) ** 2),
         )
 
         results = Solve(prog)
@@ -168,6 +190,8 @@ def main(argv=None):
             actuation_context,
         )
         mutable_actuation_vector.set_value(actuation_vector)
+
+        # print(u[left_arm_act_ids])
 
         # Get current time and set target time:
         current_time = conxtext.get_time()

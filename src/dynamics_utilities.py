@@ -154,8 +154,8 @@ def calculate_task_space_matricies(
     # Calculate the task space transform:
     task_space_transform = plant.CalcRelativeTransform(
         context=context,
-        frame_A=frame_body,
-        frame_B=frame_base_body,
+        frame_A=frame_base_body,
+        frame_B=frame_body,
     )
 
     # Calculate the jacobian of the position vector in task space:
