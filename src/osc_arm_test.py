@@ -2,11 +2,9 @@ import os
 from absl import app
 
 import numpy as np
-from pydrake.visualization import AddDefaultVisualization
+import osqp
 from pydrake.geometry import (
     MeshcatVisualizer,
-    MeshcatVisualizerParams,
-    Role,
     StartMeshcat,
 )
 from pydrake.multibody.parsing import Parser
@@ -14,12 +12,6 @@ from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContact
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.systems.primitives import ConstantVectorSource
-from pydrake.solvers import (
-    MathematicalProgram,
-    Solve,
-    SolverOptions,
-    OsqpSolver,
-)
 
 # Custom Imports:
 import dynamics_utilities
@@ -95,18 +87,11 @@ def main(argv=None):
     simulator.Initialize()
 
     end_time = 60.0
-    dt = 0.01
+    dt = 0.001
     current_time = dt
     target_time = dt
 
-    # Initial Step:
-    simulator.AdvanceTo(target_time)
-
-    # Initial Values for Optimization:
-    context = simulator.get_context()
-    plant_context = plant.GetMyContextFromRoot(context)
-
-    # Dynamics Utilities:
+    # Setup Optimization:
     q = plant.GetPositions(plant_context)
     qd = plant.GetVelocities(plant_context)
 
@@ -127,51 +112,38 @@ def main(argv=None):
     )
     left_arm_act_ids = [6, 7, 8, 9]
     left_arm_act_joint_ids = [10, 11, 12, 13]
-    B_left = np.zeros((plant.num_velocities(), plant.num_actuators()))
-    B_left[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
+    dv_size, u_size = plant.num_velocities(), plant.num_actuators()
+    B = np.zeros((dv_size, u_size))
+    B[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
     ddx_desired = np.zeros((6,))
-    constraint_constants = (M, C, tau_g, B_left)
-    objective_constants = (spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
+    constraint_constants = (M, C, tau_g, B)
+    objective_constants = (
+        spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired,
+    )
 
     # Initialize Solver:
-    solver = OsqpSolver()
-    solver_options = SolverOptions()
-    solver_options = SolverOptions()
-    solver_options.SetOption(solver.solver_id(), "rho", 1e-04)
-    solver_options.SetOption(solver.solver_id(), "eps_abs", 1e-06)
-    solver_options.SetOption(solver.solver_id(), "eps_rel", 1e-06)
-    solver_options.SetOption(solver.solver_id(), "eps_prim_inf", 1e-06)
-    solver_options.SetOption(solver.solver_id(), "eps_dual_inf", 1e-06)
-    solver_options.SetOption(solver.solver_id(), "max_iter", 5000)
-    solver_options.SetOption(solver.solver_id(), "polish", True)
-    solver_options.SetOption(solver.solver_id(), "polish_refine_iter", 3)
-    solver_options.SetOption(solver.solver_id(), "warm_start", True)
-    solver_options.SetOption(solver.solver_id(), "verbose", False)
-    prog = MathematicalProgram()
-    num_vars = plant.num_velocities() + plant.num_actuators()
-    optimization_var = prog.NewContinuousVariables(num_vars, "q")
-    equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(plant=plant)
-    constraint_handle, objective_handle, prog = optimization_utilities.initialize_program(
+    program = osqp.OSQP()
+    equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
+        plant=plant,
+    )
+    program = optimization_utilities.initialize_program(
         constraint_constants=constraint_constants,
         objective_constants=objective_constants,
+        program=program,
         equality_functions=equality_fn,
         inequality_functions=inequality_fn,
         objective_functions=objective_fn,
-        program=prog,
-        optimization_size=(plant.num_velocities(), plant.num_actuators()),
+        optimization_size=(dv_size, u_size),
     )
     # Create Isolated Update Function:
-    update_optimization = lambda constraint_constants, objective_constants, program, solver, solver_options: optimization_utilities.update_program(
+    update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
         constraint_constants,
         objective_constants,
         program,
-        solver,
-        solver_options,
         equality_fn,
         inequality_fn,
         objective_fn,
-        (constraint_handle, objective_handle),
-        (plant.num_velocities(), plant.num_actuators()),
+        (dv_size, u_size),
     )
 
     while current_time < end_time:
@@ -204,13 +176,13 @@ def main(argv=None):
             qd=qd,
         )
 
-        # OSC:
+        # Tracking Trajectory:
         time = context.get_time()
-        a_1 = 1/4
-        a_2 = 1/4
+        a_1 = 1
+        a_2 = 1
         rate_1 = a_1 * time
         rate_2 = a_2 * time
-        r_1 = 0.05
+        r_1 = 0.2
         r_2 = 0.2
         xc = 0.3
         yc = 0.3
@@ -224,6 +196,7 @@ def main(argv=None):
         ddx = -r_1 * a_1 * a_1 * np.cos(rate_1)
         ddy = -r_2 * a_2 * a_2 * np.sin(rate_2)
 
+        # Calculate Desired Control:
         zero_vector = np.zeros((3,))
         ddx_desired = np.array([0, 0, 0, 0, ddx, ddy])
         dx_desired = np.array([0, 0, 0, 0, dx, dy])
@@ -237,7 +210,7 @@ def main(argv=None):
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
         # Pack Optimization Constants:
-        constraint_constants = (M, C, tau_g, B_left)
+        constraint_constants = (M, C, tau_g, B)
         objective_constants = (
             spatial_velocity_jacobian,
             bias_spatial_acceleration,
@@ -245,26 +218,20 @@ def main(argv=None):
         )
 
         # Solve Optimization:
-        solution = update_optimization(
+        solution, program = update_optimization(
             constraint_constants=constraint_constants,
             objective_constants=objective_constants,
-            program=prog,
-            solver=solver,
-            solver_options=solver_options,
+            program=program,
         )
 
         # Unpack Optimization Solution:
-        u = solution.GetSolution(optimization_var)[plant.num_velocities():]
-
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        actuation_vector = u
+        actuation_vector = solution.x[dv_size:]
         mutable_actuation_vector = actuation_source.get_mutable_source_value(
             actuation_context,
         )
         mutable_actuation_vector.set_value(actuation_vector)
-
-        # print(u[left_arm_act_ids])
 
         # Get current time and set target time:
         current_time = conxtext.get_time()

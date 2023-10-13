@@ -1,19 +1,19 @@
 from functools import partial
+from typing import Callable, Any
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-
-import time
+from scipy import sparse
 
 # Type Annotations:
 from pydrake.multibody.plant import MultibodyPlant
-from pydrake.solvers import (
-    MathematicalProgram,
-    Solve,
-    SolverOptions,
-    OsqpSolver,
-)
+from osqp import OSQP
+Solution = Any
+
+# Surpress warnings:
+# ruff: noqa: E731
+# flake8: noqa: E731
 
 
 @partial(jax.jit, static_argnames=['split_indx'])
@@ -138,14 +138,14 @@ def initialize_optimization(
 
 
 def initialize_program(
-    constraint_constants: tuple,
-    objective_constants: tuple,
-    program: MathematicalProgram,
-    equality_functions: tuple[callable, callable],
-    inequality_functions: tuple[callable, callable],
-    objective_functions: tuple[callable, callable, callable],
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
+    program: OSQP,
+    equality_functions: Callable,
+    inequality_functions: Callable,
+    objective_functions: Callable,
     optimization_size: tuple[int, int],
-):
+) -> OSQP:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B = constraint_constants
     spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired = objective_constants
@@ -157,7 +157,7 @@ def initialize_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    q = jnp.zeros((program.num_vars(),))
+    q = jnp.zeros((dv_size + u_size,))
 
     # Generate Program Matricies:
     A_eq = A_eq_fn(q, M, C, tau_g, B)
@@ -178,46 +178,53 @@ def initialize_program(
     H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
     f = f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
 
-    # Drake Functions:
-    constraint_handle = program.AddLinearEqualityConstraint(
-        Aeq=A_eq,
-        beq=b_eq,
-        vars=program.decision_variables(),
+    # Convert to sparse:
+    A = sparse.csc_matrix(
+        np.vstack(
+            [A_eq, A_ineq],
+        )
     )
-    objective_handle = program.AddQuadraticCost(
-        Q=H,
-        b=f,
-        vars=program.decision_variables(),
-        is_convex=True,
-    )
-    program.AddLinearConstraint(
-        A=A_ineq,
-        lb=lb,
-        ub=ub,
-        vars=program.decision_variables(),
+    lb = np.concatenate([b_eq, lb])
+    ub = np.concatenate([b_eq, ub])
+    H = sparse.csc_matrix(H)
+    f = np.asarray(f)
+
+    program.setup(
+        P=H,
+        q=f,
+        A=A,
+        l=lb,
+        u=ub,
+        verbose=False,
+        warm_start=True,
+        polish=True,
+        rho=1e-2,
+        max_iter=4000,
+        eps_abs=1e-4,
+        eps_rel=1e-4,
+        eps_prim_inf=1e-6,
+        eps_dual_inf=1e-6,
+        check_termination=10,
+        delta=1e-6,
+        polish_refine_iter=5,
     )
 
-    return  constraint_handle, objective_handle, program
+    return program
 
 
 def update_program(
-    constraint_constants: tuple,
-    objective_constants: tuple,
-    program: MathematicalProgram,
-    solver: OsqpSolver,
-    solver_options: SolverOptions,
-    equality_functions: tuple[callable, callable],
-    inequality_functions: tuple[callable, callable],
-    objective_functions: tuple[callable, callable, callable],
-    optimization_handles: tuple[callable, callable],
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
+    program: OSQP,
+    equality_functions: Callable,
+    inequality_functions: Callable,
+    objective_functions: Callable,
     optimization_size: tuple[int, int],
-):
-    start_time = time.time()
+) -> tuple[Solution, OSQP]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B = constraint_constants
     spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired = objective_constants
     dv_size, u_size = optimization_size
-    constraint_handle, objective_handle = optimization_handles
 
     # Unpack optimization functions:
     b_eq_fn, A_eq_fn = equality_functions
@@ -225,44 +232,45 @@ def update_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    q = jnp.zeros((program.num_vars(),))
+    q = jnp.zeros((dv_size + u_size,))
 
     # Generate Program Matricies:
-    A_eq = A_eq_fn(q, M, C, tau_g, B)
-    b_eq = -b_eq_fn(q, M, C, tau_g, B)
-    A_ineq = A_ineq_fn(q)
-    lb = jnp.concatenate(
+    A_eq = np.asarray(A_eq_fn(q, M, C, tau_g, B))
+    b_eq = np.asarray(-b_eq_fn(q, M, C, tau_g, B))
+    A_ineq = np.asarray(A_ineq_fn(q))
+    lb = np.concatenate(
         [
-            jnp.NINF * jnp.ones((dv_size,)),
-            -10 * jnp.ones((u_size,)),
+            np.NINF * np.ones((dv_size,)),
+            -10 * np.ones((u_size,)),
         ],
     )
-    ub = jnp.concatenate(
+    ub = np.concatenate(
         [
-            jnp.inf * jnp.ones((dv_size,)),
-            10 * jnp.ones((u_size,)),
+            np.inf * np.ones((dv_size,)),
+            10 * np.ones((u_size,)),
         ],
     )
-    H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
-    f = f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
+    H = np.asarray(H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
+    f = np.asarray(f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
 
-    # Drake Functions:
-    constraint_handle.evaluator().UpdateCoefficients(
-        Aeq=A_eq,
-        beq=b_eq,
+    # Convert to sparse:
+    A = sparse.csc_matrix(
+        np.vstack(
+            [A_eq, A_ineq],
+        )
     )
-    constraint_handle.evaluator().RemoveTinyCoefficient(1e-5)
-    objective_handle.evaluator().UpdateCoefficients(
-        new_Q=H,
-        new_b=f,
+    lb = np.concatenate([b_eq, lb])
+    ub = np.concatenate([b_eq, ub])
+    H = sparse.csc_matrix(H)
+
+    program.update(
+        Px=sparse.triu(H).data,
+        q=f,
+        Ax=A.data,
+        l=lb,
+        u=ub,
     )
 
-    solution = solver.Solve(
-        program,
-        np.zeros((program.num_vars(),)),
-        solver_options,
-    )
+    solution = program.solve()
 
-    # print(f"Optimization Time: {time.time() - start_time}")
-
-    return solution
+    return solution, program
