@@ -14,11 +14,17 @@ from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContact
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.systems.primitives import ConstantVectorSource
-from pydrake.solvers import MathematicalProgram, Solve
+from pydrake.solvers import (
+    MathematicalProgram,
+    Solve,
+    SolverOptions,
+    OsqpSolver,
+)
 
 # Custom Imports:
 import dynamics_utilities
 import model_utilities
+import optimization_utilities
 
 
 def main(argv=None):
@@ -89,9 +95,84 @@ def main(argv=None):
     simulator.Initialize()
 
     end_time = 60.0
-    dt = 0.001
-    current_time = 0.0
+    dt = 0.01
+    current_time = dt
     target_time = dt
+
+    # Initial Step:
+    simulator.AdvanceTo(target_time)
+
+    # Initial Values for Optimization:
+    context = simulator.get_context()
+    plant_context = plant.GetMyContextFromRoot(context)
+
+    # Dynamics Utilities:
+    q = plant.GetPositions(plant_context)
+    qd = plant.GetVelocities(plant_context)
+
+    M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
+        plant=plant,
+        context=plant_context,
+        q=q,
+        qd=qd,
+    )
+
+    task_space_transform, spatial_velocity_jacobian, bias_spatial_acceleration = dynamics_utilities.calculate_task_space_matricies(
+        plant=plant,
+        context=plant_context,
+        body_name="left-hand_link",
+        base_body_name="world",
+        q=q,
+        qd=qd,
+    )
+    left_arm_act_ids = [6, 7, 8, 9]
+    left_arm_act_joint_ids = [10, 11, 12, 13]
+    B_left = np.zeros((plant.num_velocities(), plant.num_actuators()))
+    B_left[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
+    ddx_desired = np.zeros((6,))
+    constraint_constants = (M, C, tau_g, B_left)
+    objective_constants = (spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
+
+    # Initialize Solver:
+    solver = OsqpSolver()
+    solver_options = SolverOptions()
+    solver_options = SolverOptions()
+    solver_options.SetOption(solver.solver_id(), "rho", 1e-04)
+    solver_options.SetOption(solver.solver_id(), "eps_abs", 1e-06)
+    solver_options.SetOption(solver.solver_id(), "eps_rel", 1e-06)
+    solver_options.SetOption(solver.solver_id(), "eps_prim_inf", 1e-06)
+    solver_options.SetOption(solver.solver_id(), "eps_dual_inf", 1e-06)
+    solver_options.SetOption(solver.solver_id(), "max_iter", 5000)
+    solver_options.SetOption(solver.solver_id(), "polish", True)
+    solver_options.SetOption(solver.solver_id(), "polish_refine_iter", 3)
+    solver_options.SetOption(solver.solver_id(), "warm_start", True)
+    solver_options.SetOption(solver.solver_id(), "verbose", False)
+    prog = MathematicalProgram()
+    num_vars = plant.num_velocities() + plant.num_actuators()
+    optimization_var = prog.NewContinuousVariables(num_vars, "q")
+    equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(plant=plant)
+    constraint_handle, objective_handle, prog = optimization_utilities.initialize_program(
+        constraint_constants=constraint_constants,
+        objective_constants=objective_constants,
+        equality_functions=equality_fn,
+        inequality_functions=inequality_fn,
+        objective_functions=objective_fn,
+        program=prog,
+        optimization_size=(plant.num_velocities(), plant.num_actuators()),
+    )
+    # Create Isolated Update Function:
+    update_optimization = lambda constraint_constants, objective_constants, program, solver, solver_options: optimization_utilities.update_program(
+        constraint_constants,
+        objective_constants,
+        program,
+        solver,
+        solver_options,
+        equality_fn,
+        inequality_fn,
+        objective_fn,
+        (constraint_handle, objective_handle),
+        (plant.num_velocities(), plant.num_actuators()),
+    )
 
     while current_time < end_time:
         # Advance simulation:
@@ -106,6 +187,7 @@ def main(argv=None):
         q = plant.GetPositions(plant_context)
         qd = plant.GetVelocities(plant_context)
 
+        # Left Arm:
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -122,34 +204,31 @@ def main(argv=None):
             qd=qd,
         )
 
-        left_arm_act_ids = [6, 7, 8, 9]
-        left_arm_act_joint_ids = [10, 11, 12, 13]
-
-        B = np.zeros((plant.num_velocities(), plant.num_actuators()))
-        B[left_arm_act_joint_ids, left_arm_act_ids] = 1.0
-
         # OSC:
         time = context.get_time()
-        a = (1/4)
-        rate = a * time
-        r = 0.2
+        a_1 = 1/4
+        a_2 = 1/4
+        rate_1 = a_1 * time
+        rate_2 = a_2 * time
+        r_1 = 0.05
+        r_2 = 0.2
         xc = 0.3
         yc = 0.3
 
-        x = xc + r * np.cos(rate)
-        y = yc + r * np.sin(rate)
+        x = xc + r_1 * np.cos(rate_1)
+        y = yc + r_2 * np.sin(rate_2)
 
-        dx = -r * a * np.sin(rate)
-        dy = r * a * np.cos(rate)
+        dx = -r_1 * a_1 * np.sin(rate_1)
+        dy = r_2 * a_2 * np.cos(rate_2)
 
-        ddx = -r * a * a * np.cos(rate)
-        ddy = -r * a * a * np.sin(rate)
+        ddx = -r_1 * a_1 * a_1 * np.cos(rate_1)
+        ddy = -r_2 * a_2 * a_2 * np.sin(rate_2)
 
         zero_vector = np.zeros((3,))
         ddx_desired = np.array([0, 0, 0, 0, ddx, ddy])
         dx_desired = np.array([0, 0, 0, 0, dx, dy])
         x_desired = np.array([0, 0, 0, 0.5, x, y])
-        kp = 500
+        kp = 100
         kd = 2 * np.sqrt(kp)
         task_position = task_space_transform.translation()
         task_velocity = (spatial_velocity_jacobian @ qd)[3:]
@@ -157,25 +236,25 @@ def main(argv=None):
         dx_task = np.concatenate([zero_vector, task_velocity])
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
-        prog = MathematicalProgram()
-        dv = prog.NewContinuousVariables(plant.num_velocities(), "dv")
-        u = prog.NewContinuousVariables(plant.num_actuators(), "u")
-        prog.AddBoundingBoxConstraint(
-            -100, 100, u,
-        )
-        dynamics = M @ dv + C - tau_g
-        control = B @ u
-        for i in range(plant.num_velocities()):
-            prog.AddLinearConstraint(
-                dynamics[i] - control[i] == 0,
-            )
-        ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
-        prog.AddQuadraticCost(
-            np.sum((ddx_task - control_desired) ** 2),
+        # Pack Optimization Constants:
+        constraint_constants = (M, C, tau_g, B_left)
+        objective_constants = (
+            spatial_velocity_jacobian,
+            bias_spatial_acceleration,
+            control_desired,
         )
 
-        results = Solve(prog)
-        u = results.GetSolution(u)
+        # Solve Optimization:
+        solution = update_optimization(
+            constraint_constants=constraint_constants,
+            objective_constants=objective_constants,
+            program=prog,
+            solver=solver,
+            solver_options=solver_options,
+        )
+
+        # Unpack Optimization Solution:
+        u = solution.GetSolution(optimization_var)[plant.num_velocities():]
 
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
