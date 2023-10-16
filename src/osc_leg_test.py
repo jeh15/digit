@@ -28,7 +28,7 @@ import model_utilities
 
 def main(argv=None):
     # Load URDF file:
-    urdf_path = "models/digit_open.urdf"
+    urdf_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -132,61 +132,10 @@ def main(argv=None):
 
         B = np.zeros((plant.num_velocities(), plant.num_actuators()))
         B[right_leg_act_joint_ids, right_leg_act_ids] = 1.0
-
-        # OSC:
-        time = context.get_time()
-        a = (1/4)
-        rate = a * time
-        r = 0.2
-        xc = 0.3
-        yc = 0.3
-
-        x = xc + r * np.cos(rate)
-        y = yc + r * np.sin(rate)
-
-        dx = -r * a * np.sin(rate)
-        dy = r * a * np.cos(rate)
-
-        ddx = -r * a * a * np.cos(rate)
-        ddy = -r * a * a * np.sin(rate)
-
-        zero_vector = np.zeros((3,))
-        ddx_desired = np.array([0, 0, 0, 0, ddx, ddy])
-        dx_desired = np.array([0, 0, 0, 0, dx, dy])
-        x_desired = np.array([0, 0, 0, x, -0.1, y])
-        kp = 100
-        kd = 2 * np.sqrt(kp)
-        task_position = task_space_transform.translation()
-        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
-        x_task = np.concatenate([zero_vector, task_position])
-        dx_task = np.concatenate([zero_vector, task_velocity])
-        control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
-
-        prog = MathematicalProgram()
-        dv = prog.NewContinuousVariables(plant.num_velocities(), "dv")
-        u = prog.NewContinuousVariables(plant.num_actuators(), "u")
-        prog.AddBoundingBoxConstraint(
-            -10, 10, u,
-        )
-        dynamics = M @ dv + C - tau_g
-        control = B @ u
-        for i in range(plant.num_velocities()):
-            prog.AddLinearConstraint(
-                dynamics[i] - control[i] == 0,
-            )
-        ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
-        prog.AddQuadraticCost(
-            np.sum((ddx_task - control_desired) ** 2),
-        )
-
-        prog.SetSolverOption(IpoptSolver().solver_id(), "max_iter", 5000)
-        solver = IpoptSolver()
-        results = solver.Solve(
-            prog,
-            np.zeros((plant.num_velocities() + plant.num_actuators(),)),
-            None,
-        )
-        u = results.GetSolution(u)
+        
+        u = np.zeros((plant.num_actuators(),))
+        u[12] = -20 * np.sin(context.get_time())
+        u[13] = 20 * np.sin(context.get_time())
 
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)

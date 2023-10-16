@@ -232,7 +232,7 @@ def update_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    q = jnp.zeros((dv_size + u_size,))
+    q = np.zeros((dv_size + u_size,))
 
     # Generate Program Matricies:
     A_eq = np.asarray(A_eq_fn(q, M, C, tau_g, B))
