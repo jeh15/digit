@@ -129,13 +129,30 @@ def main(argv=None):
 
         right_leg_act_ids = [10, 11, 12, 13, 14, 15]
         right_leg_act_joint_ids = [14, 15, 16, 17, 20, 21]
+        right_arm_act_ids = [16, 17, 18, 19]
+        right_arm_act_joint_ids = [24, 25, 26, 27]
 
         B = np.zeros((plant.num_velocities(), plant.num_actuators()))
         B[right_leg_act_joint_ids, right_leg_act_ids] = 1.0
-        
+
         u = np.zeros((plant.num_actuators(),))
-        u[12] = -20 * np.sin(context.get_time())
+        kp = 25
+        kd = 2 * np.sqrt(kp)
+        # Right Leg:
+        u[10] = kp * (0 - q[14]) - kd * (qd[14])
+        u[11] = kp * (0 - q[15]) - kd * (qd[15])
+        # u[12] = 20 * np.sin(context.get_time())
+        u[12] = kp * (0 - q[16]) - kd * (qd[16])
+        # u[13] = kp * (0 - q[17]) - kd * (qd[17])
         u[13] = 20 * np.sin(context.get_time())
+        u[14] = 0
+        u[15] = 0
+
+        # Right Arm:
+        u[16] = kp * (0 - q[24]) - kd * (qd[24])
+        u[17] = kp * (0 - q[25]) - kd * (qd[25])
+        u[18] = kp * (0 - q[26]) - kd * (qd[26])
+        u[19] = kp * (0 - q[27]) - kd * (qd[27])
 
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
