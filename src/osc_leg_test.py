@@ -24,9 +24,13 @@ from pydrake.solvers import (
 # Custom Imports:
 import dynamics_utilities
 import model_utilities
+import digit_utilities
 
 
 def main(argv=None):
+    # Load convenience class for digit:
+    digit_idx = digit_utilities.DigitUtilities()
+
     # Load URDF file:
     urdf_path = "models/digit.urdf"
     filepath = os.path.join(
@@ -127,32 +131,31 @@ def main(argv=None):
             qd=qd,
         )
 
-        right_leg_act_ids = [10, 11, 12, 13, 14, 15]
-        right_leg_act_joint_ids = [14, 15, 16, 17, 20, 21]
-        right_arm_act_ids = [16, 17, 18, 19]
-        right_arm_act_joint_ids = [24, 25, 26, 27]
-
-        B = np.zeros((plant.num_velocities(), plant.num_actuators()))
-        B[right_leg_act_joint_ids, right_leg_act_ids] = 1.0
-
         u = np.zeros((plant.num_actuators(),))
         kp = 25
         kd = 2 * np.sqrt(kp)
-        # Right Leg:
-        u[10] = kp * (0 - q[14]) - kd * (qd[14])
-        u[11] = kp * (0 - q[15]) - kd * (qd[15])
-        # u[12] = 20 * np.sin(context.get_time())
-        u[12] = kp * (0 - q[16]) - kd * (qd[16])
-        # u[13] = kp * (0 - q[17]) - kd * (qd[17])
-        u[13] = 20 * np.sin(context.get_time())
-        u[14] = 0
-        u[15] = 0
 
-        # Right Arm:
-        u[16] = kp * (0 - q[24]) - kd * (qd[24])
-        u[17] = kp * (0 - q[25]) - kd * (qd[25])
-        u[18] = kp * (0 - q[26]) - kd * (qd[26])
-        u[19] = kp * (0 - q[27]) - kd * (qd[27])
+        # Get states:
+        q_right_leg = q[digit_idx.actuated_joints_idx["right_leg"]]
+        qd_right_leg = qd[digit_idx.actuated_joints_idx["right_leg"]]
+        q_right_arm = q[digit_idx.actuated_joints_idx["right_arm"]]
+        qd_right_arm = qd[digit_idx.actuated_joints_idx["right_arm"]]
+
+        # Right Leg Controll:
+        right_leg_motor = digit_idx.actuation_idx["right_leg"]
+        u[right_leg_motor] = kp * (-q_right_leg) - kd * (qd_right_leg)
+
+        # Use specific mappings:
+        right_knee_motor = digit_idx.right_knee["actuation_idx"]
+        right_toe_a_motor = digit_idx.right_toe_a["actuation_idx"]
+        right_toe_b_motor = digit_idx.right_toe_b["actuation_idx"]
+        u[right_knee_motor] = 20 * np.sin(context.get_time())
+        u[right_toe_a_motor] = 0.0
+        u[right_toe_b_motor] = 0.0
+
+        # Right Arm Controll:
+        right_arm_motor = digit_idx.actuation_idx["right_arm"]
+        u[right_arm_motor] = kp * (-q_right_arm) - kd * (qd_right_arm)
 
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)

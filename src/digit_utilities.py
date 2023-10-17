@@ -1,4 +1,4 @@
-class Digit_Utilities:
+class DigitUtilities():
     """
     Convenience class for Digit index mappings.
     """
