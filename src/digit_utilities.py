@@ -100,4 +100,5 @@ class DigitUtilities():
             "joint_idx": 27,
         }
 
-
+# Get names function to pring out joint names:
+# def get_names()

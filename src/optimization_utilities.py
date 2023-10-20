@@ -28,7 +28,7 @@ def equality_constraints(
     """Equality constraints for the dynamics of a system.
 
     Args:
-        q: The generalized positions.
+        q: Spatial velocities.
         M: The mass matrix.
         C: The Coriolis matrix.
         tau_g: The gravity vector.
@@ -39,7 +39,7 @@ def equality_constraints(
     Returns:
         The equality constraints.
 
-        M @ q + C @ q + tau_g - B @ u = 0
+        M @ ddq + C @ dq + tau_g - B @ u = 0
     """
     # Split optimization variables:
     dv = q[:split_indx]

@@ -2,11 +2,9 @@ import os
 from absl import app
 
 import numpy as np
-from pydrake.visualization import AddDefaultVisualization
+import osqp
 from pydrake.geometry import (
     MeshcatVisualizer,
-    MeshcatVisualizerParams,
-    Role,
     StartMeshcat,
 )
 from pydrake.multibody.parsing import Parser
@@ -14,17 +12,12 @@ from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContact
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.systems.primitives import ConstantVectorSource
-from pydrake.solvers import (
-    MathematicalProgram,
-    Solve,
-    SolverOptions,
-    IpoptSolver,
-)
 
 # Custom Imports:
 import dynamics_utilities
 import model_utilities
 import digit_utilities
+import optimization_utilities
 
 
 def main(argv=None):
@@ -32,7 +25,7 @@ def main(argv=None):
     digit_idx = digit_utilities.DigitUtilities()
 
     # Load URDF file:
-    urdf_path = "models/digit.urdf"
+    urdf_path = "models/digit_open.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -89,6 +82,12 @@ def main(argv=None):
         meshcat=meshcat,
     )
 
+    # Control mappings:
+    B = np.zeros(
+        (plant.num_velocities(), plant.num_actuators()),
+        dtype=np.float64,
+    )
+
     # Build diagram:
     diagram = builder.Build()
 
@@ -101,6 +100,63 @@ def main(argv=None):
     dt = 0.001
     current_time = 0.0
     target_time = dt
+
+    # Setup Optimization:
+    q = plant.GetPositions(plant_context)
+    qd = plant.GetVelocities(plant_context)
+
+    M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
+        plant=plant,
+        context=plant_context,
+        q=q,
+        qd=qd,
+    )
+
+    task_space_transform, spatial_velocity_jacobian, bias_spatial_acceleration = dynamics_utilities.calculate_task_space_matricies(
+        plant=plant,
+        context=plant_context,
+        body_name="right-foot_link",
+        base_body_name="world",
+        q=q,
+        qd=qd,
+    )
+
+    dv_size, u_size = plant.num_velocities(), plant.num_actuators()
+    B = np.zeros((dv_size, u_size))
+    B[
+        digit_idx.actuated_joints_idx["right_leg"],
+        digit_idx.actuation_idx["right_leg"]
+    ] = 1.0
+    ddx_desired = np.zeros((6,))
+    constraint_constants = (M, C, tau_g, B)
+    objective_constants = (
+        spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired,
+    )
+
+    # Initialize Solver:
+    program = osqp.OSQP()
+    equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
+        plant=plant,
+    )
+    program = optimization_utilities.initialize_program(
+        constraint_constants=constraint_constants,
+        objective_constants=objective_constants,
+        program=program,
+        equality_functions=equality_fn,
+        inequality_functions=inequality_fn,
+        objective_functions=objective_fn,
+        optimization_size=(dv_size, u_size),
+    )
+    # Create Isolated Update Function:
+    update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
+        constraint_constants,
+        objective_constants,
+        program,
+        equality_fn,
+        inequality_fn,
+        objective_fn,
+        (dv_size, u_size),
+    )
 
     while current_time < end_time:
         # Advance simulation:
@@ -131,35 +187,61 @@ def main(argv=None):
             qd=qd,
         )
 
-        u = np.zeros((plant.num_actuators(),))
-        kp = 25
+        print(task_space_transform.translation())
+        # Tracking Trajectory:
+        time = context.get_time()
+        a_1 = 1/4
+        a_2 = 1/4
+        rate_1 = a_1 * time
+        rate_2 = a_2 * time
+        r_1 = 0.2
+        r_2 = 0.2
+        xc = 0.0
+        yc = -0.75
+
+        x = xc + r_1 * np.cos(rate_1)
+        y = yc + r_2 * np.sin(rate_2)
+
+        dx = -r_1 * a_1 * np.sin(rate_1)
+        dy = r_2 * a_2 * np.cos(rate_2)
+
+        ddx = -r_1 * a_1 * a_1 * np.cos(rate_1)
+        ddy = -r_2 * a_2 * a_2 * np.sin(rate_2)
+
+        # Calculate Desired Control:
+        kp = 100
         kd = 2 * np.sqrt(kp)
 
-        # Get states:
-        q_right_leg = q[digit_idx.actuated_joints_idx["right_leg"]]
-        qd_right_leg = qd[digit_idx.actuated_joints_idx["right_leg"]]
-        q_right_arm = q[digit_idx.actuated_joints_idx["right_arm"]]
-        qd_right_arm = qd[digit_idx.actuated_joints_idx["right_arm"]]
+        # Calculate Desired Control:
+        zero_vector = np.zeros((3,))
+        ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
+        dx_desired = np.array([0, 0, 0, dx, 0, dy])
+        x_desired = np.array([0, 0, 0, x, -0.1, y])
+        task_position = task_space_transform.translation()
+        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
+        x_task = np.concatenate([zero_vector, task_position])
+        dx_task = np.concatenate([zero_vector, task_velocity])
+        control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
-        # Right Leg Controll:
-        right_leg_motor = digit_idx.actuation_idx["right_leg"]
-        u[right_leg_motor] = kp * (-q_right_leg) - kd * (qd_right_leg)
+        # Pack Optimization Constants:
+        constraint_constants = (M, C, tau_g, B)
+        objective_constants = (
+            spatial_velocity_jacobian,
+            bias_spatial_acceleration,
+            control_desired,
+        )
 
-        # Use specific mappings:
-        right_knee_motor = digit_idx.right_knee["actuation_idx"]
-        right_toe_a_motor = digit_idx.right_toe_a["actuation_idx"]
-        right_toe_b_motor = digit_idx.right_toe_b["actuation_idx"]
-        u[right_knee_motor] = 20 * np.sin(context.get_time())
-        u[right_toe_a_motor] = 0.0
-        u[right_toe_b_motor] = 0.0
+        # Solve Optimization:
+        solution, program = update_optimization(
+            constraint_constants=constraint_constants,
+            objective_constants=objective_constants,
+            program=program,
+        )
 
-        # Right Arm Controll:
-        right_arm_motor = digit_idx.actuation_idx["right_arm"]
-        u[right_arm_motor] = kp * (-q_right_arm) - kd * (qd_right_arm)
-
+        # Unpack Optimization Solution:
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        actuation_vector = u
+        actuation_vector = solution.x[dv_size:]
         mutable_actuation_vector = actuation_source.get_mutable_source_value(
             actuation_context,
         )

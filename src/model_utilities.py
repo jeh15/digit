@@ -1,5 +1,6 @@
 import numpy as np
 from pydrake.multibody.plant import MultibodyPlant, CoulombFriction
+from pydrake.multibody.tree import FixedOffsetFrame
 from pydrake.math import RigidTransform
 from pydrake.geometry import HalfSpace
 
@@ -142,3 +143,166 @@ def add_terrian(
     )
 
     return plant
+
+
+def add_auxiliary_frames(
+    plant: MultibodyPlant,
+) -> dict:
+    # Left Achilles Rod:
+    left_heel_spring_frame = plant.GetFrameByName("left-heel-spring_link")
+    left_hip_frame = plant.GetFrameByName("left-hip-pitch_link")
+    left_hip_position = np.array([[0.0, 0.0, 0.046]]).T
+    left_heel_spring_position = np.array([[0.113789, -0.011056, 0]]).T
+    left_achilles_rod_spring_frame = FixedOffsetFrame(
+        name="left_achilles_rod_spring_frame",
+        P=left_heel_spring_frame,
+        X_PF=RigidTransform(
+            p=left_heel_spring_position,
+        ),
+    )
+    left_achilles_rod_hip_frame = FixedOffsetFrame(
+        name="left_achilles_rod_hip_frame",
+        P=left_hip_frame,
+        X_PF=RigidTransform(
+            p=left_hip_position,
+        ),
+    )
+    plant.AddFrame(left_achilles_rod_spring_frame)
+    plant.AddFrame(left_achilles_rod_hip_frame)
+
+    # Right Achilles Rod:
+    right_hip_frame = plant.GetFrameByName("right-hip-pitch_link")
+    right_heel_spring_frame = plant.GetFrameByName("right-heel-spring_link")
+    right_hip_position = np.array([[0.0, 0.0, 0.046]]).T
+    right_heel_spring_position = np.array([[0.1, -0.01, 0]]).T
+    right_achilles_rod_spring_frame = FixedOffsetFrame(
+        name="right_achilles_rod_spring_frame",
+        P=right_heel_spring_frame,
+        X_PF=RigidTransform(
+            p=right_heel_spring_position,
+        ),
+    )
+    right_achilles_rod_hip_frame = FixedOffsetFrame(
+        name="right_achilles_rod_hip_frame",
+        P=right_hip_frame,
+        X_PF=RigidTransform(
+            p=right_hip_position,
+        ),
+    )
+    plant.AddFrame(right_achilles_rod_spring_frame)
+    plant.AddFrame(right_achilles_rod_hip_frame)
+
+    # Left Toe A rod:
+    left_toe_roll_frame = plant.GetFrameByName("left-toe-roll_link")
+    left_toe_a_frame = plant.GetFrameByName("left-toe-A_link")
+    left_toe_a_roll_position = np.array([[0.0179, -0.009551, -0.054164]]).T
+    left_toe_a_position = np.array([[0.057, 0, -0.008]]).T
+    left_toe_a_motor_frame = FixedOffsetFrame(
+        name="left_toe_a_motor_frame",
+        P=left_toe_a_frame,
+        X_PF=RigidTransform(
+            p=left_toe_a_position,
+        ),
+    )
+    left_toe_a_roll_frame = FixedOffsetFrame(
+        name="left_toe_a_roll_frame",
+        P=left_toe_roll_frame,
+        X_PF=RigidTransform(
+            p=left_toe_a_roll_position,
+        ),
+    )
+    plant.AddFrame(left_toe_a_motor_frame)
+    plant.AddFrame(left_toe_a_roll_frame)
+
+    # Left Toe B rod:
+    left_toe_b_frame = plant.GetFrameByName("left-toe-B_link")
+    left_toe_b_roll_position = np.array([[-0.0181, -0.009551, -0.054164]]).T
+    left_toe_b_position = np.array([[0.057, 0, -0.008]]).T
+    left_toe_b_motor_frame = FixedOffsetFrame(
+        name="left_toe_b_motor_frame",
+        P=left_toe_b_frame,
+        X_PF=RigidTransform(
+            p=left_toe_b_position,
+        ),
+    )
+    left_toe_b_roll_frame = FixedOffsetFrame(
+        name="left_toe_b_roll_frame",
+        P=left_toe_roll_frame,
+        X_PF=RigidTransform(
+            p=left_toe_b_roll_position,
+        ),
+    )
+    plant.AddFrame(left_toe_b_motor_frame)
+    plant.AddFrame(left_toe_b_roll_frame)
+
+    # Right Toe A rod:
+    right_toe_roll_frame = plant.GetFrameByName("right-toe-roll_link")
+    right_toe_a_frame = plant.GetFrameByName("right-toe-A_link")
+    right_toe_a_roll_position = np.array([[0.0179, 0.009551, -0.054164]]).T
+    right_toe_a_position = np.array([[0.057, 0, -0.008]]).T
+    right_toe_a_motor_frame = FixedOffsetFrame(
+        name="right_toe_a_motor_frame",
+        P=right_toe_a_frame,
+        X_PF=RigidTransform(
+            p=right_toe_a_position,
+        ),
+    )
+    right_toe_a_roll_frame = FixedOffsetFrame(
+        name="right_toe_a_roll_frame",
+        P=right_toe_roll_frame,
+        X_PF=RigidTransform(
+            p=right_toe_a_roll_position,
+        ),
+    )
+    plant.AddFrame(right_toe_a_motor_frame)
+    plant.AddFrame(right_toe_a_roll_frame)
+
+    # Right Toe B rod:
+    right_toe_b_frame = plant.GetFrameByName("right-toe-B_link")
+    right_toe_b_roll_position = np.array([[-0.0181, 0.009551, -0.054164]]).T
+    right_toe_b_position = np.array([[0.057, 0, -0.008]]).T
+    right_toe_b_motor_frame = FixedOffsetFrame(
+        name="right_toe_b_motor_frame",
+        P=right_toe_b_frame,
+        X_PF=RigidTransform(
+            p=right_toe_b_position,
+        ),
+    )
+    right_toe_b_roll_frame = FixedOffsetFrame(
+        name="right_toe_b_roll_frame",
+        P=right_toe_roll_frame,
+        X_PF=RigidTransform(
+            p=right_toe_b_roll_position,
+        ),
+    )
+    plant.AddFrame(right_toe_b_motor_frame)
+    plant.AddFrame(right_toe_b_roll_frame)
+
+    auxiliary_frames = {
+        "left_achilles_rod": {
+            "spring_frame": left_achilles_rod_spring_frame,
+            "hip_frame": left_achilles_rod_hip_frame,
+        },
+        "right_achilles_rod": {
+            "spring_frame": right_achilles_rod_spring_frame,
+            "hip_frame": right_achilles_rod_hip_frame,
+        },
+        "left_toe_a": {
+            "motor_frame": left_toe_a_motor_frame,
+            "roll_frame": left_toe_a_roll_frame,
+        },
+        "left_toe_b": {
+            "motor_frame": left_toe_b_motor_frame,
+            "roll_frame": left_toe_b_roll_frame,
+        },
+        "right_toe_a": {
+            "motor_frame": right_toe_a_motor_frame,
+            "roll_frame": right_toe_a_roll_frame,
+        },
+        "right_toe_b": {
+            "motor_frame": right_toe_b_motor_frame,
+            "roll_frame": right_toe_b_roll_frame,
+        },
+    }
+
+    return auxiliary_frames

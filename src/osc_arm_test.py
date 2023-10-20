@@ -21,7 +21,7 @@ import optimization_utilities
 
 def main(argv=None):
     # Load URDF file:
-    urdf_path = "models/digit.urdf"
+    urdf_path = "models/digit_open.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -201,7 +201,7 @@ def main(argv=None):
         ddx_desired = np.array([0, 0, 0, 0, ddx, ddy])
         dx_desired = np.array([0, 0, 0, 0, dx, dy])
         x_desired = np.array([0, 0, 0, 0.5, x, y])
-        kp = 100
+        kp = 1000
         kd = 2 * np.sqrt(kp)
         task_position = task_space_transform.translation()
         task_velocity = (spatial_velocity_jacobian @ qd)[3:]

@@ -63,6 +63,9 @@ def main(argv=None):
     # Apply closed loop kinematic constraints:
     plant = model_utilities.apply_kinematic_constraints(plant=plant)
 
+    # Add auxiliary frames:
+    auxiliary_frames = model_utilities.add_auxiliary_frames(plant=plant)
+
     # Finalize:
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
@@ -98,12 +101,15 @@ def main(argv=None):
     simulator.set_target_realtime_rate(1.0)
     simulator.Initialize()
 
-    end_time = 10.0
+    end_time = 5.0
     dt = 0.001
     current_time = 0.0
     target_time = dt
 
-    constraint_length = []
+    left_constraint_length = []
+    right_constraint_length = []
+    toe_a_constraint_length = []
+    toe_b_constraint_length = []
 
     while current_time < end_time:
         # Advance simulation:
@@ -118,27 +124,51 @@ def main(argv=None):
         q = plant.GetPositions(plant_context)
         qd = plant.GetVelocities(plant_context)
 
-        # Test at connection points:
-        right_hip_position = np.array([[0.0, 0.0, 0.046]]).T
-        right_heel_spring_position = np.array([[0.1, -0.01, 0]]).T
-
-        hip_transform = plant.CalcPointsPositions(
+        left_achilles_rod = plant.CalcRelativeTransform(
             context=plant_context,
-            frame_B=plant.GetFrameByName("right-hip-pitch_link"),
-            p_BQi=right_hip_position,
-            frame_A=plant.world_frame(),
-        )
+            frame_A=auxiliary_frames["left_achilles_rod"]["spring_frame"],
+            frame_B=auxiliary_frames["left_achilles_rod"]["hip_frame"],
+        ).translation()
 
-        heel_transform = plant.CalcPointsPositions(
-            context=plant_context,
-            frame_B=plant.GetFrameByName("right-heel-spring_link"),
-            p_BQi=right_heel_spring_position,
-            frame_A=plant.world_frame(),
-        )
-
-        constraint_length.append(
+        left_constraint_length.append(
             np.linalg.norm(
-                hip_transform - heel_transform,
+                left_achilles_rod,
+            )
+        )
+
+        right_achilles_rod = plant.CalcRelativeTransform(
+            context=plant_context,
+            frame_A=auxiliary_frames["right_achilles_rod"]["spring_frame"],
+            frame_B=auxiliary_frames["right_achilles_rod"]["hip_frame"],
+        ).translation()
+
+        right_constraint_length.append(
+            np.linalg.norm(
+                right_achilles_rod,
+            )
+        )
+
+        left_toe_a = plant.CalcRelativeTransform(
+            context=plant_context,
+            frame_A=auxiliary_frames["left_toe_a"]["roll_frame"],
+            frame_B=auxiliary_frames["left_toe_a"]["motor_frame"],
+        ).translation()
+
+        toe_a_constraint_length.append(
+            np.linalg.norm(
+                left_toe_a,
+            )
+        )
+
+        left_toe_b = plant.CalcRelativeTransform(
+            context=plant_context,
+            frame_A=auxiliary_frames["left_toe_b"]["roll_frame"],
+            frame_B=auxiliary_frames["left_toe_b"]["motor_frame"],
+        ).translation()
+
+        toe_b_constraint_length.append(
+            np.linalg.norm(
+                left_toe_b,
             )
         )
 
@@ -180,11 +210,17 @@ def main(argv=None):
         current_time = conxtext.get_time()
         target_time = current_time + dt
 
-    constraint_length = np.asarray(constraint_length)
+    left_constraint_length = np.asarray(left_constraint_length)
+    right_constraint_length = np.asarray(right_constraint_length)
+    toe_a_constraint_length = np.asarray(toe_a_constraint_length)
+    toe_b_constraint_length = np.asarray(toe_b_constraint_length)
 
     fig, ax = plt.subplots()
-    ax.plot(constraint_length)
-    ax.set_xlim([0, len(constraint_length)])
+    ax.plot(left_constraint_length)
+    ax.plot(right_constraint_length)
+    ax.plot(toe_a_constraint_length)
+    ax.plot(toe_b_constraint_length)
+    ax.set_xlim([0, len(left_constraint_length)])
     ax.set_ylim([0, 1.0])
     ax.set_xlabel("Time")
     ax.set_ylabel("Constraint Length")
