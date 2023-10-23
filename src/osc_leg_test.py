@@ -55,6 +55,9 @@ def main(argv=None):
     # Apply closed loop kinematic constraints:
     plant = model_utilities.apply_kinematic_constraints(plant=plant)
 
+    # Add auxiliary frames:
+    auxiliary_frames = model_utilities.add_auxiliary_frames(plant=plant)
+
     # Finalize:
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
@@ -80,12 +83,6 @@ def main(argv=None):
         builder=builder,
         scene_graph=scene_graph,
         meshcat=meshcat,
-    )
-
-    # Control mappings:
-    B = np.zeros(
-        (plant.num_velocities(), plant.num_actuators()),
-        dtype=np.float64,
     )
 
     # Build diagram:
@@ -121,14 +118,34 @@ def main(argv=None):
         qd=qd,
     )
 
-    dv_size, u_size = plant.num_velocities(), plant.num_actuators()
+    H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
+        plant=plant,
+        context=plant_context,
+        auxiliary_frames=auxiliary_frames,
+        q=q,
+        qd=qd,
+    )
+
+    # Actual:
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 36
+
+    # Test:
+    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 1
+
+
     B = np.zeros((dv_size, u_size))
     B[
         digit_idx.actuated_joints_idx["right_leg"],
         digit_idx.actuation_idx["right_leg"]
     ] = 1.0
     ddx_desired = np.zeros((6,))
-    constraint_constants = (M, C, tau_g, B)
+
+    # Joint based jacobian
+    # H = np.zeros((1, 28))
+    # H[0, 3] = 1.0
+    # H[0, 5] = 1.0
+
+    constraint_constants = (M, C, tau_g, B, H, H_bias)
     objective_constants = (
         spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired,
     )
@@ -145,7 +162,7 @@ def main(argv=None):
         equality_functions=equality_fn,
         inequality_functions=inequality_fn,
         objective_functions=objective_fn,
-        optimization_size=(dv_size, u_size),
+        optimization_size=(dv_size, u_size, f_size),
     )
     # Create Isolated Update Function:
     update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
@@ -155,7 +172,7 @@ def main(argv=None):
         equality_fn,
         inequality_fn,
         objective_fn,
-        (dv_size, u_size),
+        (dv_size, u_size, f_size),
     )
 
     while current_time < end_time:
@@ -187,17 +204,24 @@ def main(argv=None):
             qd=qd,
         )
 
-        print(task_space_transform.translation())
+        H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
+            plant=plant,
+            context=plant_context,
+            auxiliary_frames=auxiliary_frames,
+            q=q,
+            qd=qd,
+        )
+
         # Tracking Trajectory:
         time = context.get_time()
         a_1 = 1/4
         a_2 = 1/4
         rate_1 = a_1 * time
         rate_2 = a_2 * time
-        r_1 = 0.2
-        r_2 = 0.2
+        r_1 = 0.1
+        r_2 = 0.1
         xc = 0.0
-        yc = -0.75
+        yc = -0.95
 
         x = xc + r_1 * np.cos(rate_1)
         y = yc + r_2 * np.sin(rate_2)
@@ -224,7 +248,14 @@ def main(argv=None):
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
         # Pack Optimization Constants:
-        constraint_constants = (M, C, tau_g, B)
+
+        # Override Optimization Constants:
+        # Joint based jacobian
+        # H = np.zeros((1, 28))
+        # H[0, 3] = 1.0
+        # H[0, 5] = 1.0
+
+        constraint_constants = (M, C, tau_g, B, H, H_bias)
         objective_constants = (
             spatial_velocity_jacobian,
             bias_spatial_acceleration,
@@ -241,7 +272,7 @@ def main(argv=None):
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        actuation_vector = solution.x[dv_size:]
+        actuation_vector = solution.x[dv_size:dv_size + u_size]
         mutable_actuation_vector = actuation_source.get_mutable_source_value(
             actuation_context,
         )

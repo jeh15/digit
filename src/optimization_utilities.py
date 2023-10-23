@@ -11,6 +11,8 @@ from pydrake.multibody.plant import MultibodyPlant
 from osqp import OSQP
 Solution = Any
 
+jax.config.update("jax_enable_x64", True)
+
 # Surpress warnings:
 # ruff: noqa: E731
 # flake8: noqa: E731
@@ -23,30 +25,50 @@ def equality_constraints(
     C: jax.typing.ArrayLike,
     tau_g: jax.typing.ArrayLike,
     B: jax.typing.ArrayLike,
-    split_indx: int,
+    H: jax.typing.ArrayLike,
+    H_bias: jax.typing.ArrayLike,
+    split_indx: (int, int),
 ) -> jnp.ndarray:
     """Equality constraints for the dynamics of a system.
 
     Args:
-        q: Spatial velocities.
+        q: Spatial velocities and constraint forces.
         M: The mass matrix.
         C: The Coriolis matrix.
         tau_g: The gravity vector.
         B: The actuation matrix.
+        H: The jacobian of the kinematic constraint.
+        H_bias: The bias term of the kinematic constraint.
         split_indx: The index at which the optimization
             variables are split in dv and u.
 
     Returns:
         The equality constraints.
 
-        M @ ddq + C @ dq + tau_g - B @ u = 0
+        M @ ddq + C @ dq + tau_g - B @ u - H.T @ f = 0
     """
     # Split optimization variables:
-    dv = q[:split_indx]
-    u = q[split_indx:]
+    dv_indx, u_indx = split_indx
+    dv = q[:dv_indx]
+    u = q[dv_indx:u_indx]
+    f = q[u_indx:]
 
     # Calculate equality constraints:
-    equality_constraints = M @ dv + C - tau_g - B @ u
+    dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
+    # kinematic = H @ dv + H_bias
+
+    # Joint Based Constraints:
+    # kinematic = dv[3] + dv[5]
+
+    # equality_constraints = jnp.concatenate(
+    #     [dynamics, kinematic],
+    # )
+
+    equality_constraints = jnp.concatenate(
+        [dynamics],
+    )
+
+    # equality_constraints = jnp.hstack([dynamics, kinematic]).flatten()
 
     return equality_constraints
 
@@ -77,11 +99,13 @@ def objective(
     spatial_velocity_jacobian: jax.typing.ArrayLike,
     bias_spatial_acceleration: jax.typing.ArrayLike,
     desired_task_acceleration: jax.typing.ArrayLike,
-    split_indx: int,
+    split_indx: (int, int),
 ) -> jnp.ndarray:
     # Split optimization variables:
-    dv = q[:split_indx]
-    u = q[split_indx:]
+    dv_indx, u_indx = split_indx
+    dv = q[:dv_indx]
+    u = q[dv_indx:u_indx]
+    f = q[u_indx:]
 
     # Calculate objective:
     ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
@@ -99,15 +123,19 @@ def initialize_optimization(
     tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
 ]:
     # Split Index:
-    split_indx = plant.num_velocities()
+    dv_indx = plant.num_velocities()
+    u_indx = plant.num_actuators() + dv_indx
+    split_indx = (dv_indx, u_indx)
 
     # Isolate optimization functions:
-    equality_fn = lambda q, M, C, tau_g, B: equality_constraints(
+    equality_fn = lambda q, M, C, tau_g, B, H, H_bias: equality_constraints(
         q,
         M,
         C,
         tau_g,
         B,
+        H,
+        H_bias,
         split_indx,
     )
 
@@ -138,18 +166,18 @@ def initialize_optimization(
 
 
 def initialize_program(
-    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
     program: OSQP,
     equality_functions: Callable,
     inequality_functions: Callable,
     objective_functions: Callable,
-    optimization_size: tuple[int, int],
+    optimization_size: tuple[int, int, int],
 ) -> OSQP:
     # Unpack optimization constants and other variables:
-    M, C, tau_g, B = constraint_constants
+    M, C, tau_g, B, H_constraint, H_bias = constraint_constants
     spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired = objective_constants
-    dv_size, u_size = optimization_size
+    dv_size, u_size, f_size = optimization_size
 
     # Unpack optimization functions:
     b_eq_fn, A_eq_fn = equality_functions
@@ -157,22 +185,24 @@ def initialize_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    q = jnp.zeros((dv_size + u_size,))
+    q = jnp.zeros((dv_size + u_size + f_size,))
 
     # Generate Program Matricies:
-    A_eq = A_eq_fn(q, M, C, tau_g, B)
-    b_eq = -b_eq_fn(q, M, C, tau_g, B)
+    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias)
+    b_eq = -b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias)
     A_ineq = A_ineq_fn(q)
     lb = jnp.concatenate(
         [
             jnp.NINF * jnp.ones((dv_size,)),
             -10 * jnp.ones((u_size,)),
+            jnp.NINF * jnp.ones((f_size,)),
         ],
     )
     ub = jnp.concatenate(
         [
             jnp.inf * jnp.ones((dv_size,)),
             10 * jnp.ones((u_size,)),
+            jnp.inf * jnp.ones((f_size,)),
         ],
     )
     H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
@@ -213,18 +243,18 @@ def initialize_program(
 
 
 def update_program(
-    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
     program: OSQP,
     equality_functions: Callable,
     inequality_functions: Callable,
     objective_functions: Callable,
-    optimization_size: tuple[int, int],
+    optimization_size: tuple[int, int, int],
 ) -> tuple[Solution, OSQP]:
     # Unpack optimization constants and other variables:
-    M, C, tau_g, B = constraint_constants
+    M, C, tau_g, B, H_constraint, H_bias = constraint_constants
     spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired = objective_constants
-    dv_size, u_size = optimization_size
+    dv_size, u_size, f_size = optimization_size
 
     # Unpack optimization functions:
     b_eq_fn, A_eq_fn = equality_functions
@@ -232,22 +262,24 @@ def update_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    q = np.zeros((dv_size + u_size,))
+    q = np.zeros((dv_size + u_size + f_size,))
 
     # Generate Program Matricies:
-    A_eq = np.asarray(A_eq_fn(q, M, C, tau_g, B))
-    b_eq = np.asarray(-b_eq_fn(q, M, C, tau_g, B))
+    A_eq = np.asarray(A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias))
+    b_eq = np.asarray(-b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias))
     A_ineq = np.asarray(A_ineq_fn(q))
-    lb = np.concatenate(
+    lb = jnp.concatenate(
         [
-            np.NINF * np.ones((dv_size,)),
-            -10 * np.ones((u_size,)),
+            jnp.NINF * jnp.ones((dv_size,)),
+            -10 * jnp.ones((u_size,)),
+            jnp.NINF * jnp.ones((f_size,)),
         ],
     )
-    ub = np.concatenate(
+    ub = jnp.concatenate(
         [
-            np.inf * np.ones((dv_size,)),
-            10 * np.ones((u_size,)),
+            jnp.inf * jnp.ones((dv_size,)),
+            10 * jnp.ones((u_size,)),
+            jnp.inf * jnp.ones((f_size,)),
         ],
     )
     H = np.asarray(H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))

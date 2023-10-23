@@ -1011,7 +1011,7 @@
         <child link="right-hand_link"/>
     </joint>
 
-    <!-- Visual
+    <!-- Visual -->
     <link name="trajectory_link">
         <inertial>
             <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -1019,9 +1019,9 @@
             <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
         </inertial>
         <visual>
-            <origin xyz="0 -0.1 -0.75" rpy="1.57 0 0"/>
+            <origin xyz="0 -0.1 -0.95" rpy="1.57 0 0"/>
             <geometry>
-                <cylinder radius="0.2" length="0.005"/>
+                <cylinder radius="0.1" length="0.005"/>
             </geometry>
             <material name="blue"/>
         </visual>
@@ -1031,10 +1031,10 @@
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <parent link="world"/>
         <child link="trajectory_link"/>
-    </joint> -->
+    </joint>
 
      <!-- Visual -->
-     <link name="trajectory_link">
+     <!-- <link name="trajectory_link">
         <inertial>
             <origin xyz="0 0 0" rpy="0 0 0"/>
             <mass value="0"/>
@@ -1053,7 +1053,7 @@
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <parent link="world"/>
         <child link="trajectory_link"/>
-    </joint>
+    </joint> -->
 
     <!-- Actuators: -->
 
