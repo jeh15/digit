@@ -308,3 +308,20 @@ def add_auxiliary_frames(
     }
 
     return auxiliary_frames
+
+
+def teststand_configuration(
+    plant: MultibodyPlant,
+):
+    teststand_frame = FixedOffsetFrame(
+        name="teststand_frame",
+        bodyB=plant.world_frame().body(),
+        X_BF=RigidTransform(
+            p=np.array([0.0, 0.0, 1.2]),
+        ),
+    )
+    # Weld base to Teststand Frame:
+    base_frame = plant.GetFrameByName("base_link")
+    plant.WeldFrames(teststand_frame, base_frame)
+
+    return plant

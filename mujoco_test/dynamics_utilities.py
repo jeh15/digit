@@ -257,7 +257,7 @@ def calculate_task_space_terms(
     return (
         task_space_transform,
         spatial_velocity_jacobian,
-        bias_spatial_acceleration,
+        bias_spatial_acceleration.flatten(),
     )
 
 
