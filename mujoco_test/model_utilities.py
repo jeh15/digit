@@ -1,11 +1,11 @@
 import numpy as np
 from pydrake.multibody.plant import MultibodyPlant, CoulombFriction
-from pydrake.multibody.tree import FixedOffsetFrame
+from pydrake.multibody.tree import FixedOffsetFrame, WeldJoint
 from pydrake.math import RigidTransform
 from pydrake.geometry import HalfSpace
 
 
-def apply_kinematic_constraints(plant: MultibodyPlant) -> MultibodyPlant:
+def apply_kinematic_constraints(plant: MultibodyPlant):
     # Add SAP Constraints for closed kinematic chains:
     achilles_distance = 0.5
     left_heel_spring_frame = plant.GetFrameByName("left-heel-spring_link")
@@ -104,14 +104,12 @@ def apply_kinematic_constraints(plant: MultibodyPlant) -> MultibodyPlant:
         damping,
     )
 
-    return plant
-
 
 def add_terrian(
     plant: MultibodyPlant,
     mu_static: float = 0.5,
     mu_dynamic: float = 0.5,
-) -> MultibodyPlant:
+):
     """
     Add a flat ground plane to the plant.
 
@@ -143,8 +141,6 @@ def add_terrian(
         name="ground_visual",
         diffuse_color=[0.5, 0.5, 0.5, 1.0],
     )
-
-    return plant
 
 
 def add_auxiliary_frames(
@@ -312,16 +308,14 @@ def add_auxiliary_frames(
 
 def teststand_configuration(
     plant: MultibodyPlant,
-):
-    teststand_frame = FixedOffsetFrame(
-        name="teststand_frame",
-        bodyB=plant.world_frame().body(),
-        X_BF=RigidTransform(
+):  
+    # CANT USE THIS METHOD... ADDS NEW JOINTS
+    base_frame = plant.GetFrameByName("base_link")
+    WeldJoint(
+        "base_to_world",
+        plant.world_frame(),
+        base_frame,
+        X_FM=RigidTransform(
             p=np.array([0.0, 0.0, 1.2]),
         ),
     )
-    # Weld base to Teststand Frame:
-    base_frame = plant.GetFrameByName("base_link")
-    plant.WeldFrames(teststand_frame, base_frame)
-
-    return plant

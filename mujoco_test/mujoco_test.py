@@ -51,10 +51,10 @@ def main(argv=None):
     parser.AddModels(filepath)
 
     # Weld base to World:
-    plant = model_utilities.teststand_configuration(plant=plant)
+    model_utilities.teststand_configuration(plant=plant)
 
     # Apply closed loop kinematic constraints:
-    plant = model_utilities.apply_kinematic_constraints(plant=plant)
+    model_utilities.apply_kinematic_constraints(plant=plant)
 
     # Add auxiliary frames:
     auxiliary_frames = model_utilities.add_auxiliary_frames(plant=plant)
