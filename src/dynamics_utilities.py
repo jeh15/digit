@@ -185,82 +185,149 @@ def calculate_task_space_matricies(
     )
 
 
-# def calculate_kinematic_constraints(
-#     plant: MultibodyPlant,
-#     context: Context,
-#     auxiliary_frames: dict,
-#     q: npt.ArrayLike,
-#     qd: npt.ArrayLike,
-# ) -> [np.ndarray, np.ndarray, np.ndarray]:
-#     """
-#     Compute the task space transform, jacobian of the position vector in task space, and bias terms.
+def calculate_task_space_terms(
+    plant: MultibodyPlant,
+    context: Context,
+    body_name: str,
+    base_body_name: str,
+    q: npt.ArrayLike,
+    qd: npt.ArrayLike,
+) -> [np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the task space transform, jacobian of the position vector in task space, and bias terms.
 
-#     Args:
-#         plant: The MultibodyPlant.
-#         context: Context of the plant.
-#         q: Generalized positions.
-#         qd: Generalized velocities.
+    Args:
+        plant: The MultibodyPlant.
+        context: Context of the plant.
+        body_name: Name of body.
+        base_body_name: Name of the base body to calculate the
+                        transform with respects to.
+        q: Generalized positions.
+        qd: Generalized velocities.
 
-#     Returns:
-#         constraint_jacobian: The jacobian of the kinematic constraints.
-#         con_bias: The bias terms of the kinematic constraints.
+    Returns:
+        task_space_transform: The transform of the body relative to the base body.
+        task_space_jacobian: The jacobian of the position vector
+                             in task space.
+        task_space_bias_terms: The bias terms in task space.
 
-#     """
-#     # Update plant model to the current state:
-#     plant.SetPositions(
-#         context=context,
-#         q=q,
-#     )
-#     plant.SetVelocities(
-#         context=context,
-#         v=qd,
-#     )
+    """
+    # Update plant model to the current state:
+    plant.SetPositions(
+        context=context,
+        q=q,
+    )
+    plant.SetVelocities(
+        context=context,
+        v=qd,
+    )
 
-#     # Zip frames:
-#     frames = [
-#         # (auxiliary_frames["left_achilles_rod"]["spring_frame"], auxiliary_frames["left_achilles_rod"]["hip_frame"]),
-#         # (auxiliary_frames["left_toe_a"]["roll_frame"], auxiliary_frames["left_toe_a"]["motor_frame"]),
-#         # (auxiliary_frames["left_toe_b"]["roll_frame"], auxiliary_frames["left_toe_b"]["motor_frame"]),
-#         (auxiliary_frames["right_achilles_rod"]["spring_frame"], auxiliary_frames["right_achilles_rod"]["hip_frame"]),
-#         (auxiliary_frames["right_toe_a"]["roll_frame"], auxiliary_frames["right_toe_a"]["motor_frame"]),
-#         (auxiliary_frames["right_toe_b"]["roll_frame"], auxiliary_frames["right_toe_b"]["motor_frame"]),
-#     ]
+    # Get frame of body and base body:
+    frame_body = plant.GetFrameByName(body_name)
+    frame_base_body = plant.GetFrameByName(base_body_name)
+    frame_world = plant.world_frame()
 
-#     frame_E = plant.world_frame()
+    # Calculate the task space transform:
+    task_space_transform = plant.CalcRelativeTransform(
+        context=context,
+        frame_A=frame_base_body,
+        frame_B=frame_body,
+    )
 
-#     constraint_jacobian = []
-#     constraint_bias = []
-#     for frame_A, frame_B in frames:
-#         constraint_jacobian.append(
-#             plant.CalcJacobianSpatialVelocity(
-#                 context=context,
-#                 with_respect_to=JacobianWrtVariable.kV,
-#                 frame_B=frame_B,
-#                 p_BoBp_B=np.zeros((3, 1)),
-#                 frame_A=frame_A,
-#                 frame_E=frame_E,
-#             )
-#         )
+    # Calculate the jacobian of the position vector in task space:
+    spatial_velocity_jacobian = plant.CalcJacobianTranslationalVelocity(
+        context=context,
+        with_respect_to=JacobianWrtVariable.kV,
+        frame_B=frame_body,
+        p_BoBi_B=np.zeros((3, 1)),
+        frame_A=frame_base_body,
+        frame_E=frame_base_body,
+    )
 
-#         # Calculate the bias terms in task space:
-#         constraint_bias.append(
-#             plant.CalcBiasSpatialAcceleration(
-#                 context=context,
-#                 with_respect_to=JacobianWrtVariable.kV,
-#                 frame_B=frame_B,
-#                 p_BoBp_B=np.zeros((3, 1)),
-#                 frame_A=frame_A,
-#                 frame_E=frame_E,
-#             ).get_coeffs()
-#         )
+    # Calculate the bias terms in task space:
+    bias_spatial_acceleration = plant.CalcBiasTranslationalAcceleration(
+        context=context,
+        with_respect_to=JacobianWrtVariable.kV,
+        frame_B=frame_body,
+        p_BoBi_B=np.zeros((3, 1)),
+        frame_A=frame_base_body,
+        frame_E=frame_base_body,
+    )
 
-#     constraint_jacobian = np.vstack(constraint_jacobian)
-#     constraint_bias = np.concatenate(constraint_bias)
+    return (
+        task_space_transform,
+        spatial_velocity_jacobian,
+        bias_spatial_acceleration,
+    )
 
-#     return (
-#         constraint_jacobian,
-#         constraint_bias,
-#     )
+
+def calculate_kinematic_constraints_spatial(
+    plant: MultibodyPlant,
+    context: Context,
+    constraint_frames: list,
+    q: npt.ArrayLike,
+    qd: npt.ArrayLike,
+) -> [np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Compute the task space transform, jacobian of the position vector in task space, and bias terms.
+
+    Args:
+        plant: The MultibodyPlant.
+        context: Context of the plant.
+        q: Generalized positions.
+        qd: Generalized velocities.
+
+    Returns:
+        constraint_jacobian: The jacobian of the kinematic constraints.
+        con_bias: The bias terms of the kinematic constraints.
+
+    """
+    # Update plant model to the current state:
+    plant.SetPositions(
+        context=context,
+        q=q,
+    )
+    plant.SetVelocities(
+        context=context,
+        v=qd,
+    )
+
+    frame_E = plant.world_frame()
+
+    constraint_jacobian = []
+    constraint_bias = []
+    for frame_A, frame_B in constraint_frames:
+        J = plant.CalcJacobianSpatialVelocity(
+            context=context,
+            with_respect_to=JacobianWrtVariable.kV,
+            frame_B=frame_B,
+            p_BoBp_B=np.zeros((3, 1)),
+            frame_A=frame_A,
+            frame_E=frame_E,
+        )[3:, :]
+        J = np.sum(J, axis=0)
+
+        constraint_jacobian.append(J)
+
+        # Calculate the bias terms in task space:
+        constraint_bias.append(
+            plant.CalcBiasSpatialAcceleration(
+                context=context,
+                with_respect_to=JacobianWrtVariable.kV,
+                frame_B=frame_B,
+                p_BoBp_B=np.zeros((3, 1)),
+                frame_A=frame_A,
+                frame_E=frame_E,
+            ).get_coeffs()
+        )
+
+    constraint_jacobian = np.vstack(constraint_jacobian)
+    constraint_bias = np.concatenate(constraint_bias)
+
+    return (
+        constraint_jacobian,
+        constraint_bias,
+    )
 
 
 def calculate_kinematic_constraints(
@@ -297,7 +364,7 @@ def calculate_kinematic_constraints(
     constraint_jacobian = []
     constraint_bias = []
     for frame_A, frame_B in constraint_frames:
-        # Calculate the kinematic constraint jacobian w.r.t spatial velocity:
+        # Calculate the kinematic constraint jacobian w.r.t velocity:
         J, position, J_relative = kinematic_constraint_jacobian(
             plant=plant,
             context=context,
@@ -432,20 +499,24 @@ def kinematic_constraint_bias(
         frame_E=frame_E,
     )
 
+    # J_rel_dot_times_v
     relative_bias = bias_A - bias_B
 
+    # phi
     position_norm = np.linalg.norm(relative_position)
 
+    # phidot
     jacobian_dot_velocity = np.dot(
         constraint_jacobian, plant.GetVelocities(context=context),
     )
 
+    # J_rel_v
     relative_jacobian_velocity = (
         relative_jacobian @ plant.GetVelocities(context=context)
     )
 
     constraint_bias = (
-            np.linalg.norm(relative_jacobian_velocity) / position_norm
+            (np.linalg.norm(relative_jacobian_velocity) ** 2) / position_norm
         ) + (
             np.dot(
                 relative_position.T, relative_bias

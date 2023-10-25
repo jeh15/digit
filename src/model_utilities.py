@@ -14,6 +14,8 @@ def apply_kinematic_constraints(plant: MultibodyPlant) -> MultibodyPlant:
     left_heel_spring_position = np.array([[0.113789, -0.011056, 0]]).T
     stiffness = 1e6
     damping = 2e3
+    # stiffness = 1e8
+    # damping = 2e3
     # Left Achilles Rod:
     plant.AddDistanceConstraint(
         left_hip_frame.body(),

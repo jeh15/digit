@@ -46,7 +46,7 @@ def equality_constraints(
         The equality constraints.
 
         Dynamics:
-        M @ dv + C @ v + tau_g - B @ u - H.T @ f = 0
+        M @ dv + C @ v - tau_g - B @ u - H.T @ f = 0
 
         Holonomic Constraints:
         H @ dv + H_bias = 0
@@ -61,16 +61,16 @@ def equality_constraints(
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
     # dynamics = M @ dv + C - tau_g - B @ u
 
-    # kinematic = H @ dv + H_bias
-    kinematic = H @ dv
-
-    equality_constraints = jnp.concatenate(
-        [dynamics, kinematic],
-    )
+    kinematic = H @ dv + H_bias
+    # kinematic = H @ dv
 
     # equality_constraints = jnp.concatenate(
-    #     [dynamics],
+    #     [dynamics, kinematic],
     # )
+
+    equality_constraints = jnp.concatenate(
+        [dynamics],
+    )
 
     return equality_constraints
 
@@ -196,14 +196,14 @@ def initialize_program(
     lb = jnp.concatenate(
         [
             jnp.NINF * jnp.ones((dv_size,)),
-            -100 * jnp.ones((u_size,)),
+            -10 * jnp.ones((u_size,)),
             jnp.NINF * jnp.ones((f_size,)),
         ],
     )
     ub = jnp.concatenate(
         [
             jnp.inf * jnp.ones((dv_size,)),
-            100 * jnp.ones((u_size,)),
+            10 * jnp.ones((u_size,)),
             jnp.inf * jnp.ones((f_size,)),
         ],
     )
@@ -273,14 +273,14 @@ def update_program(
     lb = jnp.concatenate(
         [
             jnp.NINF * jnp.ones((dv_size,)),
-            -100 * jnp.ones((u_size,)),
+            -10 * jnp.ones((u_size,)),
             jnp.NINF * jnp.ones((f_size,)),
         ],
     )
     ub = jnp.concatenate(
         [
             jnp.inf * jnp.ones((dv_size,)),
-            100 * jnp.ones((u_size,)),
+            10 * jnp.ones((u_size,)),
             jnp.inf * jnp.ones((f_size,)),
         ],
     )
