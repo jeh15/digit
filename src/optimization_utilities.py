@@ -45,7 +45,11 @@ def equality_constraints(
     Returns:
         The equality constraints.
 
-        M @ ddq + C @ dq + tau_g - B @ u - H.T @ f = 0
+        Dynamics:
+        M @ dv + C @ v + tau_g - B @ u - H.T @ f = 0
+
+        Holonomic Constraints:
+        H @ dv + H_bias = 0
     """
     # Split optimization variables:
     dv_indx, u_indx = split_indx
@@ -55,20 +59,18 @@ def equality_constraints(
 
     # Calculate equality constraints:
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
+    # dynamics = M @ dv + C - tau_g - B @ u
+
     # kinematic = H @ dv + H_bias
-
-    # Joint Based Constraints:
-    # kinematic = dv[3] + dv[5]
-
-    # equality_constraints = jnp.concatenate(
-    #     [dynamics, kinematic],
-    # )
+    kinematic = H @ dv
 
     equality_constraints = jnp.concatenate(
-        [dynamics],
+        [dynamics, kinematic],
     )
 
-    # equality_constraints = jnp.hstack([dynamics, kinematic]).flatten()
+    # equality_constraints = jnp.concatenate(
+    #     [dynamics],
+    # )
 
     return equality_constraints
 
@@ -194,14 +196,14 @@ def initialize_program(
     lb = jnp.concatenate(
         [
             jnp.NINF * jnp.ones((dv_size,)),
-            -10 * jnp.ones((u_size,)),
+            -100 * jnp.ones((u_size,)),
             jnp.NINF * jnp.ones((f_size,)),
         ],
     )
     ub = jnp.concatenate(
         [
             jnp.inf * jnp.ones((dv_size,)),
-            10 * jnp.ones((u_size,)),
+            100 * jnp.ones((u_size,)),
             jnp.inf * jnp.ones((f_size,)),
         ],
     )
@@ -271,14 +273,14 @@ def update_program(
     lb = jnp.concatenate(
         [
             jnp.NINF * jnp.ones((dv_size,)),
-            -10 * jnp.ones((u_size,)),
+            -100 * jnp.ones((u_size,)),
             jnp.NINF * jnp.ones((f_size,)),
         ],
     )
     ub = jnp.concatenate(
         [
             jnp.inf * jnp.ones((dv_size,)),
-            10 * jnp.ones((u_size,)),
+            100 * jnp.ones((u_size,)),
             jnp.inf * jnp.ones((f_size,)),
         ],
     )

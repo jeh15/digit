@@ -57,6 +57,11 @@ def main(argv=None):
 
     # Add auxiliary frames:
     auxiliary_frames = model_utilities.add_auxiliary_frames(plant=plant)
+    constraint_frames = [
+        (auxiliary_frames["right_achilles_rod"]["spring_frame"], auxiliary_frames["right_achilles_rod"]["hip_frame"]),
+        (auxiliary_frames["right_toe_a"]["roll_frame"], auxiliary_frames["right_toe_a"]["motor_frame"]),
+        (auxiliary_frames["right_toe_b"]["roll_frame"], auxiliary_frames["right_toe_b"]["motor_frame"]),
+    ]
 
     # Finalize:
     plant.Finalize()
@@ -121,17 +126,16 @@ def main(argv=None):
     H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
         plant=plant,
         context=plant_context,
-        auxiliary_frames=auxiliary_frames,
+        constraint_frames=constraint_frames,
         q=q,
         qd=qd,
     )
 
     # Actual:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 36
+    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 6
 
-    # Test:
-    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 1
-
+    # Right Leg only:
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
 
     B = np.zeros((dv_size, u_size))
     B[
@@ -139,11 +143,6 @@ def main(argv=None):
         digit_idx.actuation_idx["right_leg"]
     ] = 1.0
     ddx_desired = np.zeros((6,))
-
-    # Joint based jacobian
-    # H = np.zeros((1, 28))
-    # H[0, 3] = 1.0
-    # H[0, 5] = 1.0
 
     constraint_constants = (M, C, tau_g, B, H, H_bias)
     objective_constants = (
@@ -207,7 +206,7 @@ def main(argv=None):
         H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
             plant=plant,
             context=plant_context,
-            auxiliary_frames=auxiliary_frames,
+            constraint_frames=constraint_frames,
             q=q,
             qd=qd,
         )
