@@ -113,11 +113,28 @@ def main(argv=None):
         qd=qd,
     )
 
-    task_space_transform, spatial_velocity_jacobian, bias_spatial_acceleration = dynamics_utilities.calculate_task_space_terms(
+    task_space_transform, spatial_velocity_jacobian, bias_spatial_acceleration = dynamics_utilities.calculate_task_space_matricies(
         plant=plant,
         context=plant_context,
         body_name="right-foot_link",
         base_body_name="world",
+        q=q,
+        qd=qd,
+    )
+
+    task_transform, translational_velocity_jacobian, bias_translational_acceleration = dynamics_utilities.calculate_task_space_terms(
+        plant=plant,
+        context=plant_context,
+        body_name="right-foot_link",
+        base_body_name="world",
+        q=q,
+        qd=qd,
+    )
+
+    H_spatial, H_bias_spatial = dynamics_utilities.calculate_kinematic_constraints_spatial(
+        plant=plant,
+        context=plant_context,
+        constraint_frames=constraint_frames,
         q=q,
         qd=qd,
     )
@@ -130,11 +147,14 @@ def main(argv=None):
         qd=qd,
     )
 
+    # Spatial Representation:
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 18
+
     # Actual:
     # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 6
 
     # Right Leg only:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
+    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
 
     B = np.zeros((dv_size, u_size))
     B[
@@ -143,16 +163,26 @@ def main(argv=None):
     ] = 1.0
 
     # Spatial Representation:
-    # ddx_desired = np.zeros((6,))
+    ddx_desired = np.zeros((6,))
 
     # Translation Representation:
-    ddx_desired = np.zeros((3,))
+    # ddx_desired = np.zeros((3,))
 
+    constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
 
-    constraint_constants = (M, C, tau_g, B, H, H_bias)
+    # constraint_constants = (M, C, tau_g, B, H, H_bias)
+
     objective_constants = (
-        spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired,
+        spatial_velocity_jacobian,
+        bias_spatial_acceleration,
+        ddx_desired,
     )
+
+    # objective_constants = (
+    #     translational_velocity_jacobian,
+    #     bias_translational_acceleration,
+    #     control_desired,
+    # )
 
     # Initialize Solver:
     program = osqp.OSQP()
@@ -262,23 +292,23 @@ def main(argv=None):
         kd = 2 * np.sqrt(kp)
 
         # Calculate Desired Control: Spatial Representation:
-        # zero_vector = np.zeros((3,))
-        # ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
-        # dx_desired = np.array([0, 0, 0, dx, 0, dy])
-        # x_desired = np.array([0, 0, 0, x, -0.1, y])
-        # task_position = task_space_transform.translation()
-        # task_velocity = (spatial_velocity_jacobian @ qd)[3:]
-        # x_task = np.concatenate([zero_vector, task_position])
-        # dx_task = np.concatenate([zero_vector, task_velocity])
+        zero_vector = np.zeros((3,))
+        ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
+        dx_desired = np.array([0, 0, 0, dx, 0, dy])
+        x_desired = np.array([0, 0, 0, x, -0.1, y])
+        task_position = task_space_transform.translation()
+        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
+        x_task = np.concatenate([zero_vector, task_position])
+        dx_task = np.concatenate([zero_vector, task_velocity])
 
         # Calculate Desired Control: Translation Representation:
-        ddx_desired = np.array([ddx, 0, ddy])
-        dx_desired = np.array([dx, 0, dy])
-        x_desired = np.array([x, -0.1, y])
-        task_position = task_transform.translation()
-        task_velocity = (translational_velocity_jacobian @ qd)
-        x_task = np.concatenate([task_position])
-        dx_task = np.concatenate([task_velocity])
+        # ddx_desired = np.array([ddx, 0, ddy])
+        # dx_desired = np.array([dx, 0, dy])
+        # x_desired = np.array([x, -0.1, y])
+        # task_position = task_transform.translation()
+        # task_velocity = (translational_velocity_jacobian @ qd)
+        # x_task = np.concatenate([task_position])
+        # dx_task = np.concatenate([task_velocity])
 
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
@@ -290,18 +320,21 @@ def main(argv=None):
         # H[0, 3] = 1.0
         # H[0, 5] = 1.0
 
-        constraint_constants = (M, C, tau_g, B, H, H_bias)
-        # objective_constants = (
-        #     spatial_velocity_jacobian,
-        #     bias_spatial_acceleration,
-        #     control_desired,
-        # )
+        constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
+
+        # constraint_constants = (M, C, tau_g, B, H, H_bias)
 
         objective_constants = (
-            translational_velocity_jacobian,
-            bias_translational_acceleration,
+            spatial_velocity_jacobian,
+            bias_spatial_acceleration,
             control_desired,
         )
+
+        # objective_constants = (
+        #     translational_velocity_jacobian,
+        #     bias_translational_acceleration,
+        #     control_desired,
+        # )
 
         # Solve Optimization:
         solution, program = update_optimization(
@@ -310,10 +343,14 @@ def main(argv=None):
             program=program,
         )
 
+        accelerations = solution.x[:dv_size]
+        torque = solution.x[dv_size:dv_size + u_size]
+        constraint_force = solution.x[dv_size + u_size:]
+
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        actuation_vector = solution.x[dv_size:dv_size + u_size]
+        actuation_vector = torque
         mutable_actuation_vector = actuation_source.get_mutable_source_value(
             actuation_context,
         )
