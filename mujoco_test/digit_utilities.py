@@ -107,7 +107,7 @@ class DigitUtilities():
     # def get_names()
 
     # Mujoco to Drake Joint Position and Velocity Mappings:
-    def joint_map(self, motor_position, joint_position):
+    def joint_map(self, motor_position, joint_position) -> np.ndarray:
         # Extract Agility Digit Mappings:
         motor_left_leg = motor_position[:6]
         left_tarsus_heel = np.asarray([joint_position[1], joint_position[4]])
@@ -130,12 +130,12 @@ class DigitUtilities():
         return q
 
     # Drake to Mujoco Torque Mappings:
-    def actuation_map(self, torque):
+    def actuation_map(self, torque) -> np.ndarray:
         tau = np.concatenate(
             [
                 torque[self.actuation_idx["left_leg"]],
                 torque[self.actuation_idx["right_leg"]],
-                torque[self.actuation_idx["left_arm"]], 
+                torque[self.actuation_idx["left_arm"]],
                 torque[self.actuation_idx["right_arm"]],
             ]
         )

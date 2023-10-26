@@ -103,7 +103,7 @@ def main(argv=None):
     dt = 0.001
     current_time = 0.0
 
-     # Setup Optimization:
+    # Setup Optimization:
     q = plant.GetPositions(plant_context)
     qd = plant.GetVelocities(plant_context)
 
@@ -149,38 +149,40 @@ def main(argv=None):
     )
 
     # Spatial Representation:
-    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 18
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 18
 
     # Translation Representation:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
+    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
 
     B = np.zeros((dv_size, u_size))
     B[
         digit_idx.actuated_joints_idx["right_leg"],
         digit_idx.actuation_idx["right_leg"]
     ] = 1.0
+    
+    motor_scale = np.array([116.682, 70.1765, 206.928, 220.928, 35.9759, 35.9759])
 
     # Spatial Representation:
-    # ddx_desired = np.zeros((6,))
+    ddx_desired = np.zeros((6,))
 
     # Translation Representation:
-    ddx_desired = np.zeros((3,))
+    # ddx_desired = np.zeros((3,))
 
-    # constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
+    constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
 
-    constraint_constants = (M, C, tau_g, B, H, H_bias)
-
-    # objective_constants = (
-    #     spatial_velocity_jacobian,
-    #     bias_spatial_acceleration,
-    #     ddx_desired,
-    # )
+    # constraint_constants = (M, C, tau_g, B, H, H_bias)
 
     objective_constants = (
-        translational_velocity_jacobian,
-        bias_translational_acceleration,
+        spatial_velocity_jacobian,
+        bias_spatial_acceleration,
         ddx_desired,
     )
+
+    # objective_constants = (
+    #     translational_velocity_jacobian,
+    #     bias_translational_acceleration,
+    #     ddx_desired,
+    # )
 
     # Initialize Solver:
     program = osqp.OSQP()
@@ -282,6 +284,11 @@ def main(argv=None):
             qd=qd,
         )
 
+        # Debug:
+        # mujoco_q = q[digit_idx.actuated_joints_idx["right_leg"]]
+        # drake_q = plant.GetPositions(plant_context)[digit_idx.actuated_joints_idx["right_leg"]]
+        # print(f"Mujoco: {mujoco_q} \n Drake: {drake_q}")
+
         # Tracking Trajectory:
         time = current_time
         a_1 = 1/4
@@ -291,7 +298,7 @@ def main(argv=None):
         r_1 = 0.1
         r_2 = 0.1
         xc = 0.0
-        yc = -0.95
+        yc = 1.2 - 0.95
 
         x = xc + r_1 * np.cos(rate_1)
         y = yc + r_2 * np.sin(rate_2)
@@ -307,41 +314,44 @@ def main(argv=None):
         kd = 2 * np.sqrt(kp)
 
         # Calculate Desired Control: Spatial Representation:
-        # zero_vector = np.zeros((3,))
-        # ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
-        # dx_desired = np.array([0, 0, 0, dx, 0, dy])
-        # x_desired = np.array([0, 0, 0, x, -0.1, y])
-        # task_position = task_space_transform.translation()
-        # task_velocity = (spatial_velocity_jacobian @ qd)[3:]
-        # x_task = np.concatenate([zero_vector, task_position])
-        # dx_task = np.concatenate([zero_vector, task_velocity])
+        zero_vector = np.zeros((3,))
+        ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
+        dx_desired = np.array([0, 0, 0, dx, 0, dy])
+        x_desired = np.array([0, 0, 0, x, -0.1, y])
+        task_position = task_space_transform.translation()
+        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
+        x_task = np.concatenate([zero_vector, task_position])
+        dx_task = np.concatenate([zero_vector, task_velocity])
 
         # Calculate Desired Control: Translation Representation:
-        ddx_desired = np.array([ddx, 0, ddy])
-        dx_desired = np.array([dx, 0, dy])
-        x_desired = np.array([x, -0.1, y])
-        task_position = task_transform.translation()
-        task_velocity = (translational_velocity_jacobian @ qd)
-        x_task = np.concatenate([task_position])
-        dx_task = np.concatenate([task_velocity])
+        # ddx_desired = np.array([ddx, 0, ddy])
+        # dx_desired = np.array([dx, 0, dy])
+        # x_desired = np.array([x, -0.1, y])
+        # task_position = task_transform.translation()
+        # task_velocity = (translational_velocity_jacobian @ qd)
+        # x_task = np.concatenate([task_position])
+        # dx_task = np.concatenate([task_velocity])
+
+        print(f"Current Position: {x_task}")
+        print(f"Desired Position: {x_desired}")
 
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
-        # constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
+        constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
 
-        constraint_constants = (M, C, tau_g, B, H, H_bias)
-
-        # objective_constants = (
-        #     spatial_velocity_jacobian,
-        #     bias_spatial_acceleration,
-        #     ddx_desired,
-        # )
+        # constraint_constants = (M, C, tau_g, B, H, H_bias)
 
         objective_constants = (
-            translational_velocity_jacobian,
-            bias_translational_acceleration,
-            control_desired,
+            spatial_velocity_jacobian,
+            bias_spatial_acceleration,
+            ddx_desired,
         )
+
+        # objective_constants = (
+        #     translational_velocity_jacobian,
+        #     bias_translational_acceleration,
+        #     control_desired,
+        # )
 
         # Solve Optimization:
         solution, program = update_optimization(
@@ -357,10 +367,14 @@ def main(argv=None):
 
         # Send command:
         torque_command = digit_idx.actuation_map(torque)
+        torque_command = np.zeros_like(torque_command)
         velocity_command = np.zeros((u_size,))
         damping_command = 0.75 * np.ones((u_size,))
         command = np.array([torque_command, velocity_command, damping_command]).T
         digit_api.send_command(command, 0, True)
+
+        # print(motor_torque)
+        # print(torque_command)
 
         # Get current time and set target time:
         current_time = current_time + dt

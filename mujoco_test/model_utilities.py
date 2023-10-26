@@ -308,13 +308,11 @@ def add_auxiliary_frames(
 
 def teststand_configuration(
     plant: MultibodyPlant,
-):  
-    # CANT USE THIS METHOD... ADDS NEW JOINTS
+) -> None:
     base_frame = plant.GetFrameByName("base_link")
-    WeldJoint(
-        "base_to_world",
-        plant.world_frame(),
-        base_frame,
+    plant.WeldFrames(
+        frame_on_parent_F=plant.world_frame(),
+        frame_on_child_M=base_frame,
         X_FM=RigidTransform(
             p=np.array([0.0, 0.0, 1.2]),
         ),
