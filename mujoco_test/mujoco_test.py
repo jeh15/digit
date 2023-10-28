@@ -243,6 +243,9 @@ def main(argv=None):
         q = digit_idx.joint_map(motor_position, joint_position)
         qd = digit_idx.joint_map(motor_velocity, joint_velocity)
 
+        print(f"Current Position: {q}")
+        print(f"Current Velocity: {qd}")
+        
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -332,8 +335,8 @@ def main(argv=None):
         # x_task = np.concatenate([task_position])
         # dx_task = np.concatenate([task_velocity])
 
-        print(f"Current Position: {x_task}")
-        print(f"Desired Position: {x_desired}")
+        # print(f"Current Position: {x_task}")
+        # print(f"Desired Position: {x_desired}")
 
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
@@ -373,11 +376,21 @@ def main(argv=None):
         command = np.array([torque_command, velocity_command, damping_command]).T
         digit_api.send_command(command, 0, True)
 
+        # Unpack Optimization Solution:
+        conxtext = simulator.get_context()
+        actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
+        actuation_vector = np.zeros_like(torque)
+        mutable_actuation_vector = actuation_source.get_mutable_source_value(
+            actuation_context,
+        )
+        mutable_actuation_vector.set_value(actuation_vector)
+
         # print(motor_torque)
         # print(torque_command)
 
         # Get current time and set target time:
-        current_time = current_time + dt
+        current_time = conxtext.get_time()
+        target_time = current_time + dt
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from absl import app
 import numpy as np
 import osqp
 from pydrake.geometry import (
+    Meshcat,
     MeshcatVisualizer,
     StartMeshcat,
 )
@@ -25,7 +26,7 @@ def main(argv=None):
     digit_idx = digit_utilities.DigitUtilities()
 
     # Load URDF file:
-    urdf_path = "models/digit_open.urdf"
+    urdf_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -34,7 +35,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = StartMeshcat()
+    meshcat = Meshcat(port=7001)
 
     builder = DiagramBuilder()
     time_step = 0.0005

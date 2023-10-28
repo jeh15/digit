@@ -3,10 +3,7 @@ from absl import app
 
 import numpy as np
 import osqp
-from pydrake.geometry import (
-    MeshcatVisualizer,
-    StartMeshcat,
-)
+
 from pydrake.multibody.parsing import Parser
 from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContactSolver
 from pydrake.systems.analysis import Simulator
@@ -34,9 +31,6 @@ def main(argv=None):
         ),
         urdf_path,
     )
-
-    # Start meshcat server:
-    meshcat = StartMeshcat()
 
     builder = DiagramBuilder()
     time_step = 0.0005
@@ -79,16 +73,6 @@ def main(argv=None):
     builder.Connect(
         actuation_source.get_output_port(),
         plant.get_actuation_input_port(),
-    )
-
-    # Add Meshcat Visualizer:
-    meshcat_visualizer = MeshcatVisualizer(
-        meshcat,
-    )
-    meshcat_visualizer.AddToBuilder(
-        builder=builder,
-        scene_graph=scene_graph,
-        meshcat=meshcat,
     )
 
     # Build diagram:
@@ -140,13 +124,26 @@ def main(argv=None):
         q = digit_idx.joint_map(motor_position, joint_position)
         qd = digit_idx.joint_map(motor_velocity, joint_velocity)
 
+        plant.SetPositions(plant_context, q)
+        plant.SetVelocities(plant_context, qd)
+
+        foot_position = plant.CalcRelativeTransform(
+            context=plant_context,
+            frame_A=plant.world_frame(),
+            frame_B=plant.GetFrameByName("right-foot_link"),
+        )
+
+        print(foot_position.translation())
+
         # Calculate Desired Control:
         kp = 100
-        kd = 2 * np.sqrt(kp)
+        kd = 0.0
 
         x_desired = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         x_task = q[digit_idx.actuated_joints_idx["right_leg"]]
         dx_task = qd[digit_idx.actuated_joints_idx["right_leg"]]
+
+        print(x_task)
 
         control_desired = np.zeros((u_size,))
         control_desired[digit_idx.actuation_idx["right_leg"]] = kp * (x_desired - x_task) - kd * (dx_task)

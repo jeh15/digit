@@ -20,6 +20,8 @@ import model_utilities
 import digit_utilities
 import optimization_utilities
 
+import digit_api
+
 
 def main(argv=None):
     # Load convenience class for digit:
@@ -35,7 +37,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = Meshcat(port=7003)
+    meshcat = Meshcat(port=7004)
 
     builder = DiagramBuilder()
     time_step = 0.0005
@@ -100,6 +102,7 @@ def main(argv=None):
 
     end_time = 60.0
     dt = 0.001
+    current_time = 0.0
 
     # Setup Optimization:
     q = plant.GetPositions(plant_context)
@@ -107,6 +110,15 @@ def main(argv=None):
 
     # Spatial Representation:
     dv_size, u_size = plant.num_velocities(), plant.num_actuators()
+
+    # Initialize Digit Communication:
+    digit_api.initialize_communication(
+        "127.0.0.1",
+        25501,
+        25500,
+    )
+
+    digit_api.wait_for_connection()
 
     current_time = dt
     target_time = current_time
@@ -120,43 +132,75 @@ def main(argv=None):
         context = simulator.get_context()
         plant_context = plant.GetMyContextFromRoot(context)
 
-        # Get observations from Digit API:
+        # Calculate Drake:
         q = plant.GetPositions(plant_context)
         qd = plant.GetVelocities(plant_context)
 
-        foot_position = plant.CalcRelativeTransform(
+        foot_position_drake = plant.CalcRelativeTransform(
             context=plant_context,
             frame_A=plant.world_frame(),
             frame_B=plant.GetFrameByName("right-foot_link"),
         )
 
-        # print(foot_position.translation())
+        # Get observations from Digit API:
+        motor_position = digit_api.get_actuated_joint_position()
+        motor_velocity = digit_api.get_actuated_joint_velocity()
+        motor_torque = digit_api.get_actuated_joint_torque()
+        joint_position = digit_api.get_unactuated_joint_position()
+        joint_velocity = digit_api.get_unactuated_joint_velocity()
 
-        # Calculate Desired Control:
-        kp = 100
-        # kd = 2 * np.sqrt(kp)
+        q_mujoco = digit_idx.joint_map(motor_position, joint_position)
+        qd_mujoco = digit_idx.joint_map(motor_velocity, joint_velocity)
+
+        plant.SetPositions(plant_context, q_mujoco)
+        plant.SetVelocities(plant_context, qd_mujoco)
+
+        foot_position_mujoco = plant.CalcRelativeTransform(
+            context=plant_context,
+            frame_A=plant.world_frame(),
+            frame_B=plant.GetFrameByName("right-foot_link"),
+        )
+
+        # Set positions and velocities: back to drake
+        # plant.SetPositions(plant_context, q)
+        # plant.SetVelocities(plant_context, qd)
+
+        # Calculate Desired Control: Drake
+        kp = 200
         kd = 0.0
 
         x_desired = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         x_task = q[digit_idx.actuated_joints_idx["right_leg"]]
         dx_task = qd[digit_idx.actuated_joints_idx["right_leg"]]
 
-        print(x_task)
-
         control_desired = np.zeros((u_size,))
         control_desired[digit_idx.actuation_idx["right_leg"]] = kp * (x_desired - x_task) - kd * (dx_task)
 
-        # Unpack Optimization Solution:
-        conxtext = simulator.get_context()
-        actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
+        # Calculate Desired Control: Mujoco
+        x_desired_mujoco = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        x_task_mujoco = q_mujoco[digit_idx.actuated_joints_idx["right_leg"]]
+        dx_task_mujoco = qd_mujoco[digit_idx.actuated_joints_idx["right_leg"]]
+
+        control_desired_mujoco = np.zeros((u_size,))
+        control_desired_mujoco[digit_idx.actuation_idx["right_leg"]] = kp * (x_desired_mujoco - x_task_mujoco) - kd * (dx_task_mujoco)
+
+        # Send command: Drake
+        actuation_context = actuation_source.GetMyContextFromRoot(context)
         actuation_vector = control_desired
         mutable_actuation_vector = actuation_source.get_mutable_source_value(
             actuation_context,
         )
         mutable_actuation_vector.set_value(actuation_vector)
 
+        # Send command: Mujoco
+        torque_command = digit_idx.actuation_map(control_desired_mujoco)
+        velocity_command = np.zeros((u_size,))
+        damping_command = 0.75 * np.ones((u_size,))
+        command = np.array([torque_command, velocity_command, damping_command]).T
+        digit_api.send_command(command, 0, True)
+
         # Get current time and set target time:
-        current_time = conxtext.get_time()
+        current_time = context.get_time()
         target_time = current_time + dt
 
 
