@@ -19,15 +19,13 @@ import model_utilities
 import digit_utilities
 import optimization_utilities
 
-import digit_api
-
 
 def main(argv=None):
     # Load convenience class for digit:
     digit_idx = digit_utilities.DigitUtilities()
 
     # Load URDF file:
-    urdf_path = "models/digit_open.urdf"
+    urdf_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),

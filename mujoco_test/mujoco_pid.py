@@ -27,7 +27,7 @@ def main(argv=None):
     digit_idx = digit_utilities.DigitUtilities()
 
     # Load URDF file:
-    urdf_path = "models/digit_open.urdf"
+    urdf_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
