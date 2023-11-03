@@ -27,7 +27,7 @@ def main(argv=None):
     digit_idx = digit_utilities.DigitUtilities()
 
     # Load URDF file:
-    urdf_path = "models/digit_open.urdf"
+    urdf_path = "models/digit.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -107,6 +107,11 @@ def main(argv=None):
     q = plant.GetPositions(plant_context)
     qd = plant.GetVelocities(plant_context)
 
+    left_leg = digit_idx.actuated_joints_idx["left_leg"]
+    left_arm = digit_idx.actuated_joints_idx["left_arm"]
+    right_arm = digit_idx.actuated_joints_idx["right_arm"]
+    actuation_indx = digit_idx.actuation_idx["right_leg"]
+
     M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
         plant=plant,
         context=plant_context,
@@ -123,24 +128,7 @@ def main(argv=None):
         qd=qd,
     )
 
-    task_transform, translational_velocity_jacobian, bias_translational_acceleration = dynamics_utilities.calculate_task_space_terms(
-        plant=plant,
-        context=plant_context,
-        body_name="right-foot_link",
-        base_body_name="world",
-        q=q,
-        qd=qd,
-    )
-
     H_spatial, H_bias_spatial = dynamics_utilities.calculate_kinematic_constraints_spatial(
-        plant=plant,
-        context=plant_context,
-        constraint_frames=constraint_frames,
-        q=q,
-        qd=qd,
-    )
-
-    H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
         plant=plant,
         context=plant_context,
         constraint_frames=constraint_frames,
@@ -151,38 +139,22 @@ def main(argv=None):
     # Spatial Representation:
     dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 18
 
-    # Translation Representation:
-    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
-
     B = np.zeros((dv_size, u_size))
     B[
         digit_idx.actuated_joints_idx["right_leg"],
         digit_idx.actuation_idx["right_leg"]
     ] = 1.0
-    
-    motor_scale = np.array([116.682, 70.1765, 206.928, 220.928, 35.9759, 35.9759])
 
     # Spatial Representation:
-    ddx_desired = np.zeros((6,))
-
-    # Translation Representation:
-    # ddx_desired = np.zeros((3,))
+    control_desired = np.zeros((6,))
 
     constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
-
-    # constraint_constants = (M, C, tau_g, B, H, H_bias)
 
     objective_constants = (
         spatial_velocity_jacobian,
         bias_spatial_acceleration,
-        ddx_desired,
+        control_desired,
     )
-
-    # objective_constants = (
-    #     translational_velocity_jacobian,
-    #     bias_translational_acceleration,
-    #     ddx_desired,
-    # )
 
     # Initialize Solver:
     program = osqp.OSQP()
@@ -210,7 +182,6 @@ def main(argv=None):
     )
 
     # Run Simulation for a few steps:
-    simulator.AdvanceTo(0.5)
     target_time = simulator.get_context().get_time() + dt
 
     # Initialize Digit Communication:
@@ -240,12 +211,15 @@ def main(argv=None):
         joint_position = digit_api.get_unactuated_joint_position()
         joint_velocity = digit_api.get_unactuated_joint_velocity()
 
-        q = digit_idx.joint_map(motor_position, joint_position)
-        qd = digit_idx.joint_map(motor_velocity, joint_velocity)
+        q_mujoco = digit_idx.joint_map(motor_position, joint_position)
+        qd_mujoco = digit_idx.joint_map(motor_velocity, joint_velocity)
 
-        print(f"Current Position: {q}")
-        print(f"Current Velocity: {qd}")
-        
+        plant.SetPositions(plant_context, q_mujoco)
+        plant.SetVelocities(plant_context, qd_mujoco)
+
+        q = plant.GetPositions(plant_context)
+        qd = plant.GetVelocities(plant_context)
+
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -262,15 +236,6 @@ def main(argv=None):
             qd=qd,
         )
 
-        task_transform, translational_velocity_jacobian, bias_translational_acceleration = dynamics_utilities.calculate_task_space_terms(
-            plant=plant,
-            context=plant_context,
-            body_name="right-foot_link",
-            base_body_name="world",
-            q=q,
-            qd=qd,
-        )
-
         H_spatial, H_bias_spatial = dynamics_utilities.calculate_kinematic_constraints_spatial(
             plant=plant,
             context=plant_context,
@@ -279,27 +244,14 @@ def main(argv=None):
             qd=qd,
         )
 
-        H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
-            plant=plant,
-            context=plant_context,
-            constraint_frames=constraint_frames,
-            q=q,
-            qd=qd,
-        )
-
-        # Debug:
-        # mujoco_q = q[digit_idx.actuated_joints_idx["right_leg"]]
-        # drake_q = plant.GetPositions(plant_context)[digit_idx.actuated_joints_idx["right_leg"]]
-        # print(f"Mujoco: {mujoco_q} \n Drake: {drake_q}")
-
         # Tracking Trajectory:
         time = current_time
         a_1 = 1/4
         a_2 = 1/4
         rate_1 = a_1 * time
         rate_2 = a_2 * time
-        r_1 = 0.1
-        r_2 = 0.1
+        r_1 = 0.2
+        r_2 = 0.2
         xc = 0.0
         yc = 1.2 - 0.95
 
@@ -313,48 +265,47 @@ def main(argv=None):
         ddy = -r_2 * a_2 * a_2 * np.sin(rate_2)
 
         # Calculate Desired Control:
-        kp = 100
+        kp = 50
         kd = 2 * np.sqrt(kp)
 
         # Calculate Desired Control: Spatial Representation:
+        # zero_vector = np.zeros((3,))
+        # ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
+        # dx_desired = np.array([0, 0, 0, dx, 0, dy])
+        # x_desired = np.array([0, 0, 0, x, -0.1, y])
+        # task_position = task_space_transform.translation()
+        # task_velocity = (spatial_velocity_jacobian @ qd)[3:]
+        # x_task = np.concatenate([zero_vector, task_position])
+        # dx_task = np.concatenate([zero_vector, task_velocity])
+
+        # Calculate Desired Control: Orientation
         zero_vector = np.zeros((3,))
         ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
         dx_desired = np.array([0, 0, 0, dx, 0, dy])
         x_desired = np.array([0, 0, 0, x, -0.1, y])
         task_position = task_space_transform.translation()
-        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
-        x_task = np.concatenate([zero_vector, task_position])
-        dx_task = np.concatenate([zero_vector, task_velocity])
-
-        # Calculate Desired Control: Translation Representation:
-        # ddx_desired = np.array([ddx, 0, ddy])
-        # dx_desired = np.array([dx, 0, dy])
-        # x_desired = np.array([x, -0.1, y])
-        # task_position = task_transform.translation()
-        # task_velocity = (translational_velocity_jacobian @ qd)
-        # x_task = np.concatenate([task_position])
-        # dx_task = np.concatenate([task_velocity])
-
-        # print(f"Current Position: {x_task}")
-        # print(f"Desired Position: {x_desired}")
+        task_rotation = task_space_transform.rotation().ToQuaternion().xyz()
+        task_velocity = (spatial_velocity_jacobian @ qd)
+        x_task = np.concatenate([task_rotation, task_position])
+        dx_task = task_velocity
 
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
-        constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
+        # PID Control:
+        kp = 100
+        kd = 2 * np.sqrt(kp)
 
-        # constraint_constants = (M, C, tau_g, B, H, H_bias)
+        left_leg_control = kp * (np.zeros_like(q[left_leg]) - q[left_leg]) - kd * (qd[left_leg])
+        left_arm_control = kp * (np.zeros_like(q[left_arm]) - q[left_arm]) - kd * (qd[left_arm])
+        right_arm_control = kp * (np.zeros_like(q[right_arm]) - q[right_arm]) - kd * (qd[right_arm])
+
+        constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
 
         objective_constants = (
             spatial_velocity_jacobian,
             bias_spatial_acceleration,
-            ddx_desired,
+            control_desired,
         )
-
-        # objective_constants = (
-        #     translational_velocity_jacobian,
-        #     bias_translational_acceleration,
-        #     control_desired,
-        # )
 
         # Solve Optimization:
         solution, program = update_optimization(
@@ -369,27 +320,16 @@ def main(argv=None):
         constraint_force = solution.x[dv_size + u_size:]
 
         # Send command:
+        torque = torque[actuation_indx]
+        torque = np.concatenate([left_leg_control, left_arm_control, torque, right_arm_control])
         torque_command = digit_idx.actuation_map(torque)
-        torque_command = np.zeros_like(torque_command)
         velocity_command = np.zeros((u_size,))
         damping_command = 0.75 * np.ones((u_size,))
         command = np.array([torque_command, velocity_command, damping_command]).T
         digit_api.send_command(command, 0, True)
 
-        # Unpack Optimization Solution:
-        # conxtext = simulator.get_context()
-        # actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        # actuation_vector = np.zeros_like(torque)
-        # mutable_actuation_vector = actuation_source.get_mutable_source_value(
-        #     actuation_context,
-        # )
-        # mutable_actuation_vector.set_value(actuation_vector)
-
-        # print(motor_torque)
-        # print(torque_command)
-
         # Get current time and set target time:
-        current_time = conxtext.get_time()
+        current_time = context.get_time()
         target_time = current_time + dt
 
 

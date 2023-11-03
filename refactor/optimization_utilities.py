@@ -59,10 +59,9 @@ def equality_constraints(
 
     # Calculate equality constraints:
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
-    # dynamics = M @ dv + C - tau_g - B @ u
 
-    kinematic = H @ dv + H_bias
-    # kinematic = H @ dv
+    # kinematic = H @ dv + H_bias
+    kinematic = H @ dv
 
     equality_constraints = jnp.concatenate(
         [dynamics, kinematic],
@@ -119,14 +118,16 @@ def objective(
 
 def initialize_optimization(
     plant: MultibodyPlant,
+    optimization_size: tuple[int, int, int],
 ) -> tuple[
     tuple[jnp.ndarray, jnp.ndarray],
     tuple[jnp.ndarray, jnp.ndarray],
     tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
 ]:
     # Split Index:
-    dv_indx = plant.num_velocities()
-    u_indx = plant.num_actuators() + dv_indx
+    dv_size, u_size, f_size = optimization_size
+    dv_indx = dv_size
+    u_indx = u_size + dv_indx
     split_indx = (dv_indx, u_indx)
 
     # Isolate optimization functions:
@@ -187,24 +188,24 @@ def initialize_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    q = np.zeros((dv_size + u_size + f_size,))
+    q = jnp.zeros((dv_size + u_size + f_size,))
 
     # Generate Program Matricies:
     A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias)
     b_eq = -b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias)
     A_ineq = A_ineq_fn(q)
-    lb = np.concatenate(
+    lb = jnp.concatenate(
         [
-            np.NINF * np.ones((dv_size,)),
-            -100 * np.ones((u_size,)),
-            np.NINF * np.ones((f_size,)),
+            jnp.NINF * jnp.ones((dv_size,)),
+            -100 * jnp.ones((u_size,)),
+            jnp.NINF * jnp.ones((f_size,)),
         ],
     )
-    ub = np.concatenate(
+    ub = jnp.concatenate(
         [
-            np.inf * np.ones((dv_size,)),
-            100 * np.ones((u_size,)),
-            np.inf * np.ones((f_size,)),
+            jnp.inf * jnp.ones((dv_size,)),
+            100 * jnp.ones((u_size,)),
+            jnp.inf * jnp.ones((f_size,)),
         ],
     )
     H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)

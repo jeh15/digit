@@ -61,16 +61,16 @@ def equality_constraints(
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
     # dynamics = M @ dv + C - tau_g - B @ u
 
-    # kinematic = H @ dv + H_bias
+    kinematic = H @ dv + H_bias
     # kinematic = H @ dv
 
-    # equality_constraints = jnp.concatenate(
-    #     [dynamics, kinematic],
-    # )
-
     equality_constraints = jnp.concatenate(
-        [dynamics],
+        [dynamics, kinematic],
     )
+
+    # equality_constraints = jnp.concatenate(
+    #     [dynamics],
+    # )
 
     return equality_constraints
 
@@ -286,6 +286,10 @@ def update_program(
     )
     H = np.asarray(H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
     f = np.asarray(f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
+
+    # Condition Matrix:
+    # if np.linalg.cond(H) == np.inf:
+    #     H = H + 1e-3 * np.eye(H.shape[0])
 
     # Convert to sparse:
     A = sparse.csc_matrix(

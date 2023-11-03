@@ -35,7 +35,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = Meshcat(port=7001)
+    meshcat = Meshcat(port=7002)
 
     builder = DiagramBuilder()
     time_step = 0.0005
@@ -149,13 +149,13 @@ def main(argv=None):
     )
 
     # Spatial Representation:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 18
+    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 18
 
     # Actual:
     # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 6
 
     # Right Leg only:
-    # dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
 
     B = np.zeros((dv_size, u_size))
     B[
@@ -164,26 +164,26 @@ def main(argv=None):
     ] = 1.0
 
     # Spatial Representation:
-    ddx_desired = np.zeros((6,))
+    # control_desired = np.zeros((6,))
 
     # Translation Representation:
-    # ddx_desired = np.zeros((3,))
+    control_desired = np.zeros((3,))
 
-    constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
+    # constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
 
-    # constraint_constants = (M, C, tau_g, B, H, H_bias)
-
-    objective_constants = (
-        spatial_velocity_jacobian,
-        bias_spatial_acceleration,
-        ddx_desired,
-    )
+    constraint_constants = (M, C, tau_g, B, H, H_bias)
 
     # objective_constants = (
-    #     translational_velocity_jacobian,
-    #     bias_translational_acceleration,
+    #     spatial_velocity_jacobian,
+    #     bias_spatial_acceleration,
     #     control_desired,
     # )
+
+    objective_constants = (
+        translational_velocity_jacobian,
+        bias_translational_acceleration,
+        control_desired,
+    )
 
     # Initialize Solver:
     program = osqp.OSQP()
@@ -274,10 +274,10 @@ def main(argv=None):
         a_2 = 1/4
         rate_1 = a_1 * time
         rate_2 = a_2 * time
-        r_1 = 0.1
-        r_2 = 0.1
+        r_1 = 0.2
+        r_2 = 0.2
         xc = 0.0
-        yc = -0.95
+        yc = -0.8
 
         x = xc + r_1 * np.cos(rate_1)
         y = yc + r_2 * np.sin(rate_2)
@@ -289,27 +289,27 @@ def main(argv=None):
         ddy = -r_2 * a_2 * a_2 * np.sin(rate_2)
 
         # Calculate Desired Control:
-        kp = 100
+        kp = 10
         kd = 2 * np.sqrt(kp)
 
         # Calculate Desired Control: Spatial Representation:
-        zero_vector = np.zeros((3,))
-        ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
-        dx_desired = np.array([0, 0, 0, dx, 0, dy])
-        x_desired = np.array([0, 0, 0, x, -0.1, y])
-        task_position = task_space_transform.translation()
-        task_velocity = (spatial_velocity_jacobian @ qd)[3:]
-        x_task = np.concatenate([zero_vector, task_position])
-        dx_task = np.concatenate([zero_vector, task_velocity])
+        # zero_vector = np.zeros((3,))
+        # ddx_desired = np.array([0, 0, 0, ddx, 0, ddy])
+        # dx_desired = np.array([0, 0, 0, dx, 0, dy])
+        # x_desired = np.array([0, 0, 0, x, -0.1, y])
+        # task_position = task_space_transform.translation()
+        # task_velocity = (spatial_velocity_jacobian @ qd)[3:]
+        # x_task = np.concatenate([zero_vector, task_position])
+        # dx_task = np.concatenate([zero_vector, task_velocity])
 
         # Calculate Desired Control: Translation Representation:
-        # ddx_desired = np.array([ddx, 0, ddy])
-        # dx_desired = np.array([dx, 0, dy])
-        # x_desired = np.array([x, -0.1, y])
-        # task_position = task_transform.translation()
-        # task_velocity = (translational_velocity_jacobian @ qd)
-        # x_task = np.concatenate([task_position])
-        # dx_task = np.concatenate([task_velocity])
+        ddx_desired = np.array([ddx, 0, ddy])
+        dx_desired = np.array([dx, 0, dy])
+        x_desired = np.array([x, -0.1, y])
+        task_position = task_transform.translation()
+        task_velocity = (translational_velocity_jacobian @ qd)
+        x_task = np.concatenate([task_position])
+        dx_task = np.concatenate([task_velocity])
 
         control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
 
@@ -321,21 +321,21 @@ def main(argv=None):
         # H[0, 3] = 1.0
         # H[0, 5] = 1.0
 
-        constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
+        # constraint_constants = (M, C, tau_g, B, H_spatial, H_bias_spatial)
 
-        # constraint_constants = (M, C, tau_g, B, H, H_bias)
-
-        objective_constants = (
-            spatial_velocity_jacobian,
-            bias_spatial_acceleration,
-            control_desired,
-        )
+        constraint_constants = (M, C, tau_g, B, H, H_bias)
 
         # objective_constants = (
-        #     translational_velocity_jacobian,
-        #     bias_translational_acceleration,
+        #     spatial_velocity_jacobian,
+        #     bias_spatial_acceleration,
         #     control_desired,
         # )
+
+        objective_constants = (
+            translational_velocity_jacobian,
+            bias_translational_acceleration,
+            control_desired,
+        )
 
         # Solve Optimization:
         solution, program = update_optimization(
