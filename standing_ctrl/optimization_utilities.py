@@ -61,16 +61,16 @@ def equality_constraints(
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
     # dynamics = M @ dv + C - tau_g - B @ u
 
-    # kinematic = H @ dv + H_bias
+    kinematic = H @ dv + H_bias
     # kinematic = H @ dv
 
-    # equality_constraints = jnp.concatenate(
-    #     [dynamics, kinematic],
-    # )
-
     equality_constraints = jnp.concatenate(
-        [dynamics],
+        [dynamics, kinematic],
     )
+
+    # equality_constraints = jnp.concatenate(
+    #     [dynamics],
+    # )
 
     return equality_constraints
 

@@ -3,6 +3,7 @@ from absl import app
 
 import numpy as np
 import osqp
+from pydrake.common.eigen_geometry import Quaternion
 from pydrake.geometry import (
     MeshcatVisualizer,
     StartMeshcat,
@@ -24,7 +25,7 @@ import digit_api
 
 def main(argv=None):
     # Load convenience class for digit:
-    digit_idx = digit_utilities.DigitUtilities()
+    digit_idx = digit_utilities.DigitUtilities(floating_base=True)
 
     # Load URDF file:
     urdf_path = "models/digit.urdf"
@@ -111,10 +112,10 @@ def main(argv=None):
         qd=qd,
     )
 
-    task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_task_space_terms(
+    task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_taskspace(
         plant=plant,
         context=plant_context,
-        body_name="right-foot_link",
+        body_name=["base_link", "left-foot_link", "right-foot_link"],
         base_body_name="world",
         q=q,
         qd=qd,
@@ -131,14 +132,9 @@ def main(argv=None):
     # Translation Representation:
     dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
 
-    B = np.zeros((dv_size, u_size))
-    B[
-        digit_idx.actuated_joints_idx["right_leg"],
-        digit_idx.actuation_idx["right_leg"]
-    ] = 1.0
+    B = digit_idx.control_matrix
 
-    # Translation Representation:
-    ddx_desired = np.zeros((3,))
+    ddx_desired = np.zeros((velocity_jacobian.shape[0],))
 
     constraint_constants = (M, C, tau_g, B, H, H_bias)
 
@@ -204,7 +200,7 @@ def main(argv=None):
         joint_position = digit_api.get_unactuated_joint_position()
         joint_velocity = digit_api.get_unactuated_joint_velocity()
         base_position = np.concatenate(
-            [digit_api.get_base_orientation(), digit_api.get_base_position()].append
+            [digit_api.get_base_orientation(), digit_api.get_base_position()],
         )
         base_velocity = np.concatenate(
             [digit_api.get_base_angular_velocity(), digit_api.get_base_linear_velocity()],
@@ -213,8 +209,8 @@ def main(argv=None):
         q = digit_idx.joint_map(motor_position, joint_position, base_position)
         qd = digit_idx.joint_map(motor_velocity, joint_velocity, base_velocity)
 
-        print(f"Current Position: {q}")
-        print(f"Current Velocity: {qd}")
+        # print(f"Current Position: {q}")
+        # print(f"Current Velocity: {qd}")
 
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
@@ -223,10 +219,10 @@ def main(argv=None):
             qd=qd,
         )
 
-        task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_task_space_terms(
+        task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_taskspace(
             plant=plant,
             context=plant_context,
-            body_name="right-foot_link",
+            body_name=["base_link", "left-foot_link", "right-foot_link"],
             base_body_name="world",
             q=q,
             qd=qd,
@@ -245,50 +241,69 @@ def main(argv=None):
         # drake_q = plant.GetPositions(plant_context)[digit_idx.actuated_joints_idx["right_leg"]]
         # print(f"Mujoco: {mujoco_q} \n Drake: {drake_q}")
 
-        # Tracking Trajectory:
-        time = current_time
-        a_1 = 1/4
-        a_2 = 1/4
-        rate_1 = a_1 * time
-        rate_2 = a_2 * time
-        r_1 = 0.1
-        r_2 = 0.1
-        xc = 0.0
-        yc = 1.2 - 0.95
+        # Calculate Desired Control:
+        kp = 0.1
+        kd = 0.1 * np.sqrt(kp)
 
-        x = xc + r_1 * np.cos(rate_1)
-        y = yc + r_2 * np.sin(rate_2)
+        # Base Tracking:
+        # Position:
+        base_ddx = np.zeros((3,))
+        base_dx = np.zeros_like(base_ddx)
+        base_x = np.array([0.04638328773710699, -0.00014100711268926657, 1.0308927292801415])
+        # Rotation:
+        base_ddw = np.zeros_like(base_ddx)
+        base_dw = np.zeros_like(base_ddw)
+        base_w = np.array([1.0, 0.0, 0.0, 0.0])
 
-        dx = -r_1 * a_1 * np.sin(rate_1)
-        dy = r_2 * a_2 * np.cos(rate_2)
+        # Foot Tracking:
+        # Position:
+        foot_ddx = np.zeros_like(base_ddx)
+        foot_dx = np.zeros_like(foot_ddx)
+        left_foot_x = np.array([0.009485657750110333, 0.10003118944491024, -0.0006031847782857091])
+        right_foot_x = np.array([0.009501654135451067, -0.10004060651147584, -0.0006041746580776665])
+        # Rotation:
+        foot_ddw = np.zeros_like(base_ddx)
+        foot_dw = np.zeros_like(foot_ddw)
+        left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
+        right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
 
-        ddx = -r_1 * a_1 * a_1 * np.cos(rate_1)
-        ddy = -r_2 * a_2 * a_2 * np.sin(rate_2)
+        position_target = [
+            [base_ddx, base_dx, base_x],
+            [foot_ddx, foot_dx, left_foot_x],
+            [base_ddx, base_dx, right_foot_x],
+        ]
+        rotation_target = [
+            [base_ddw, base_dw, base_w],
+            [foot_ddw, foot_dw, left_foot_w],
+            [base_ddw, base_dw, right_foot_w],
+        ]
+        task_jacobian = np.split(velocity_jacobian, 3)
+
+        loop_iterables = zip(task_transform, task_jacobian, position_target, rotation_target)
 
         # Calculate Desired Control:
-        kp = 100
-        kd = 2 * np.sqrt(kp)
+        control_input = []
+        for transform, J, x_target, w_target in loop_iterables:
+            task_position = transform.translation()
+            task_rotation = transform.rotation().ToQuaternion()
+            task_velocity = J @ qd
+            target_rotation = Quaternion(w_target[2])
+            # From Ickes, B. P. (1970): For control purposes the last three elements of the quaternion define the roll, pitch, and yaw rotational errors.
+            rotation_error = target_rotation.multiply(task_rotation.conjugate()).xyz()
+            position_control = x_target[0] + kd * (x_target[1] - task_velocity[3:]) + kp * (x_target[2] - task_position)
+            rotation_control = w_target[0] + kd * (w_target[1] - task_velocity[:3]) + kp * (rotation_error)
+            control_input.append(
+                np.concatenate([rotation_control, position_control])
+            )
 
-        # Calculate Desired Control: Translation Representation:
-        ddx_desired = np.array([ddx, 0, ddy])
-        dx_desired = np.array([dx, 0, dy])
-        x_desired = np.array([x, -0.1, y])
-        task_position = task_transform.translation()
-        task_velocity = (velocity_jacobian @ qd)
-        x_task = np.concatenate([task_position])
-        dx_task = np.concatenate([task_velocity])
-
-        # print(f"Current Position: {x_task}")
-        # print(f"Desired Position: {x_desired}")
-
-        control_desired = ddx_desired + kp * (x_desired - x_task) + kd * (dx_desired - dx_task)
+        control_input = np.concatenate(control_input, axis=0)
 
         constraint_constants = (M, C, tau_g, B, H, H_bias)
 
         objective_constants = (
             velocity_jacobian,
             bias_acceleration,
-            control_desired,
+            control_input,
         )
 
         # Solve Optimization:
@@ -297,6 +312,7 @@ def main(argv=None):
             objective_constants=objective_constants,
             program=program,
         )
+        
 
         # Unpack Optimization Solution:
         accelerations = solution.x[:dv_size]
@@ -305,7 +321,6 @@ def main(argv=None):
 
         # Send command:
         torque_command = digit_idx.actuation_map(torque)
-        torque_command = np.zeros_like(torque_command)
         velocity_command = np.zeros((u_size,))
         damping_command = 0.75 * np.ones((u_size,))
         command = np.array([torque_command, velocity_command, damping_command]).T
@@ -320,8 +335,7 @@ def main(argv=None):
         )
         mutable_actuation_vector.set_value(actuation_vector)
 
-        # print(motor_torque)
-        # print(torque_command)
+        print(torque_command)
 
         # Get current time and set target time:
         current_time = conxtext.get_time()

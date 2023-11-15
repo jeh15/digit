@@ -9,15 +9,26 @@ class DigitUtilities():
         self,
         floating_base: bool = False,
     ):  
+        self.num_motors = 20
+
         self.actuation_idx = {
-                "left_leg": [0, 1, 2, 3, 4, 5],
-                "left_arm": [6, 7, 8, 9],
-                "right_leg": [10, 11, 12, 13, 14, 15],
-                "right_arm": [16, 17, 18, 19],
-            }
+            "left_leg": [0, 1, 2, 3, 4, 5],
+            "left_arm": [6, 7, 8, 9],
+            "right_leg": [10, 11, 12, 13, 14, 15],
+            "right_arm": [16, 17, 18, 19],
+        }
+
+        actuation_idx = np.concatenate(
+            list(
+                self.actuation_idx.values()
+            ),
+            axis=0,
+        )
         
         if floating_base:
-            base_offset = 7
+            self.num_joints = 34
+
+            base_offset = 6
 
             self.base_indx = {
                 "rotation": [0, 1, 2, 3],
@@ -30,6 +41,15 @@ class DigitUtilities():
                 "right_leg": np.array([14, 15, 16, 17, 20, 21]) + base_offset,
                 "right_arm": np.array([24, 25, 26, 27]) + base_offset,
             }
+
+            actuated_joints_idx = np.concatenate(
+                list(
+                    self.actuated_joints_idx.values()
+                ),
+                axis=0,
+            )
+            self.control_matrix = np.zeros((self.num_joints, self.num_motors))
+            self.control_matrix[actuated_joints_idx, actuation_idx] = 1.0
 
             # Left Mappings:
             self.left_hip_roll = {
@@ -116,12 +136,23 @@ class DigitUtilities():
             }
 
         else:
+            self.num_joints = 28
+
             self.actuated_joints_idx = {
                 "left_leg": [0, 1, 2, 3, 6, 7],
                 "left_arm": [10, 11, 12, 13],
                 "right_leg": [14, 15, 16, 17, 20, 21],
                 "right_arm": [24, 25, 26, 27],
             }
+
+            actuated_joints_idx = np.concatenate(
+                list(
+                    self.actuated_joints_idx.values()
+                ),
+                axis=0,
+            )
+            self.control_matrix = np.zeros((self.num_joints, self.num_motors))
+            self.control_matrix[actuated_joints_idx, actuation_idx] = 1.0
 
             # Left Mappings:
             self.left_hip_roll = {
