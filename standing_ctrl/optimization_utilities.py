@@ -111,10 +111,20 @@ def objective(
 
     # Calculate objective:
     ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
+    task_objective = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
 
-    objective = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
+    control_objective = jnp.sum(u ** 2)
 
-    return objective
+    constraint_objective = jnp.sum(f ** 2)
+
+    task_weight = 1.0
+    control_weight = 0.01
+    constraint_weight = 0.01
+    objective_value = task_weight * task_objective + control_weight * control_objective + constraint_weight * constraint_objective
+
+    # objective_value = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
+
+    return objective_value
 
 
 def initialize_optimization(
@@ -207,6 +217,20 @@ def initialize_program(
             jnp.inf * jnp.ones((f_size,)),
         ],
     )
+    # lb = jnp.concatenate(
+    #     [
+    #         -100 * jnp.ones((dv_size,)),
+    #         -100 * jnp.ones((u_size,)),
+    #         -100 * jnp.ones((f_size,)),
+    #     ],
+    # )
+    # ub = jnp.concatenate(
+    #     [
+    #         100 * jnp.ones((dv_size,)),
+    #         100 * jnp.ones((u_size,)),
+    #         100 * jnp.ones((f_size,)),
+    #     ],
+    # )
     H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
     f = f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired)
 
@@ -227,15 +251,15 @@ def initialize_program(
         A=A,
         l=lb,
         u=ub,
-        verbose=False,
+        verbose=True,
         warm_start=True,
         polish=True,
         rho=1e-2,
         max_iter=4000,
-        eps_abs=1e-4,
-        eps_rel=1e-4,
-        eps_prim_inf=1e-6,
-        eps_dual_inf=1e-6,
+        eps_abs=1e-6,
+        eps_rel=1e-6,
+        eps_prim_inf=1e-8,
+        eps_dual_inf=1e-8,
         check_termination=10,
         delta=1e-6,
         polish_refine_iter=5,
@@ -284,8 +308,26 @@ def update_program(
             jnp.inf * jnp.ones((f_size,)),
         ],
     )
+    # lb = jnp.concatenate(
+    #     [
+    #         -100 * jnp.ones((dv_size,)),
+    #         -100 * jnp.ones((u_size,)),
+    #         -100 * jnp.ones((f_size,)),
+    #     ],
+    # )
+    # ub = jnp.concatenate(
+    #     [
+    #         100 * jnp.ones((dv_size,)),
+    #         100 * jnp.ones((u_size,)),
+    #         100 * jnp.ones((f_size,)),
+    #     ],
+    # )
     H = np.asarray(H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
     f = np.asarray(f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
+
+    # Conidtion Program Matricies:
+    # H = np.where(np.abs(H) <= 1e-8, 0.0, H)
+    # f = np.where(np.abs(f) <= 1e-8, 0.0, f)
 
     # Convert to sparse:
     A = sparse.csc_matrix(

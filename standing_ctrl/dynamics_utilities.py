@@ -431,9 +431,10 @@ def calculate_taskspace(
     velocity_jacobian = []
     bias_acceleration = []
 
+    frame_base_body = plant.GetFrameByName(base_body_name)
+
     for body in body_name:
         frame_body = plant.GetFrameByName(body)
-        frame_base_body = plant.GetFrameByName(base_body_name)
 
         # Calculate the task space transform:
         taskspace_transform = plant.CalcRelativeTransform(
@@ -463,7 +464,7 @@ def calculate_taskspace(
         transform.append(taskspace_transform)
         velocity_jacobian.append(J)
         bias_acceleration.append(dJv)
-    
+
     velocity_jacobian = np.concatenate(velocity_jacobian, axis=0)
     bias_acceleration = np.concatenate(bias_acceleration, axis=0)
 

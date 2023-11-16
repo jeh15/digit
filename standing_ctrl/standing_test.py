@@ -57,6 +57,9 @@ def main(argv=None):
     # Add auxiliary frames:
     auxiliary_frames = model_utilities.add_auxiliary_frames(plant=plant)
     constraint_frames = [
+        (auxiliary_frames["left_achilles_rod"]["spring_frame"], auxiliary_frames["left_achilles_rod"]["hip_frame"]),
+        (auxiliary_frames["left_toe_a"]["roll_frame"], auxiliary_frames["left_toe_a"]["motor_frame"]),
+        (auxiliary_frames["left_toe_b"]["roll_frame"], auxiliary_frames["left_toe_b"]["motor_frame"]),
         (auxiliary_frames["right_achilles_rod"]["spring_frame"], auxiliary_frames["right_achilles_rod"]["hip_frame"]),
         (auxiliary_frames["right_toe_a"]["roll_frame"], auxiliary_frames["right_toe_a"]["motor_frame"]),
         (auxiliary_frames["right_toe_b"]["roll_frame"], auxiliary_frames["right_toe_b"]["motor_frame"]),
@@ -130,7 +133,7 @@ def main(argv=None):
     )
 
     # Translation Representation:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 6
 
     B = digit_idx.control_matrix
 
@@ -270,12 +273,12 @@ def main(argv=None):
         position_target = [
             [base_ddx, base_dx, base_x],
             [foot_ddx, foot_dx, left_foot_x],
-            [base_ddx, base_dx, right_foot_x],
+            [foot_ddx, foot_dx, right_foot_x],
         ]
         rotation_target = [
             [base_ddw, base_dw, base_w],
             [foot_ddw, foot_dw, left_foot_w],
-            [base_ddw, base_dw, right_foot_w],
+            [foot_ddw, foot_dw, right_foot_w],
         ]
         task_jacobian = np.split(velocity_jacobian, 3)
 
@@ -312,7 +315,8 @@ def main(argv=None):
             objective_constants=objective_constants,
             program=program,
         )
-        
+
+        assert solution.info.status_val == 1
 
         # Unpack Optimization Solution:
         accelerations = solution.x[:dv_size]
@@ -335,7 +339,7 @@ def main(argv=None):
         )
         mutable_actuation_vector.set_value(actuation_vector)
 
-        print(torque_command)
+        # print(torque_command)
 
         # Get current time and set target time:
         current_time = conxtext.get_time()
