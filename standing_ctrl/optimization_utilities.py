@@ -122,9 +122,10 @@ def objective(
     constraint_weight = 0.01
     objective_value = task_weight * task_objective + control_weight * control_objective + constraint_weight * constraint_objective
 
-    # objective_value = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
+    # objective_value = task_objective
 
     return objective_value
+
 
 
 def initialize_optimization(
@@ -240,8 +241,11 @@ def initialize_program(
             [A_eq, A_ineq],
         )
     )
+    # A = sparse.csc_matrix(A_ineq)
+
     lb = np.concatenate([b_eq, lb])
     ub = np.concatenate([b_eq, ub])
+    
     H = sparse.csc_matrix(H)
     f = np.asarray(f)
 
@@ -255,11 +259,11 @@ def initialize_program(
         warm_start=True,
         polish=True,
         rho=1e-2,
-        max_iter=4000,
-        eps_abs=1e-6,
-        eps_rel=1e-6,
-        eps_prim_inf=1e-8,
-        eps_dual_inf=1e-8,
+        max_iter=10000,
+        eps_abs=1e-4,
+        eps_rel=1e-4,
+        eps_prim_inf=1e-5,
+        eps_dual_inf=1e-5,
         check_termination=10,
         delta=1e-6,
         polish_refine_iter=5,
@@ -326,6 +330,7 @@ def update_program(
     f = np.asarray(f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired))
 
     # Conidtion Program Matricies:
+    # H = H + np.diag(np.ones(H.shape[0],) * 10)
     # H = np.where(np.abs(H) <= 1e-8, 0.0, H)
     # f = np.where(np.abs(f) <= 1e-8, 0.0, f)
 
@@ -337,6 +342,10 @@ def update_program(
     )
     lb = np.concatenate([b_eq, lb])
     ub = np.concatenate([b_eq, ub])
+
+    # lb = np.asarray(lb)
+    # ub = np.asarray(ub)
+
     H = sparse.csc_matrix(H)
 
     program.update(

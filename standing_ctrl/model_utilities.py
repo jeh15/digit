@@ -105,7 +105,7 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
     )
 
 
-def add_terrian(
+def add_terrain(
     plant: MultibodyPlant,
     mu_static: float = 0.5,
     mu_dynamic: float = 0.5,

@@ -8,7 +8,7 @@ class DigitUtilities():
     def __init__(
         self,
         floating_base: bool = False,
-    ):  
+    ): 
         self.num_motors = 20
 
         self.actuation_idx = {
@@ -24,7 +24,7 @@ class DigitUtilities():
             ),
             axis=0,
         )
-        
+
         if floating_base:
             self.num_joints = 34
 
