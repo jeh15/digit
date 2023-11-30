@@ -61,9 +61,6 @@ def main(argv=None):
         (auxiliary_frames["left_achilles_rod"]["spring_frame"], auxiliary_frames["left_achilles_rod"]["hip_frame"]),
         (auxiliary_frames["left_toe_a"]["roll_frame"], auxiliary_frames["left_toe_a"]["motor_frame"]),
         (auxiliary_frames["left_toe_b"]["roll_frame"], auxiliary_frames["left_toe_b"]["motor_frame"]),
-        (auxiliary_frames["right_achilles_rod"]["spring_frame"], auxiliary_frames["right_achilles_rod"]["hip_frame"]),
-        (auxiliary_frames["right_toe_a"]["roll_frame"], auxiliary_frames["right_toe_a"]["motor_frame"]),
-        (auxiliary_frames["right_toe_b"]["roll_frame"], auxiliary_frames["right_toe_b"]["motor_frame"]),
     ]
 
     # Finalize:
@@ -148,7 +145,7 @@ def main(argv=None):
     task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_taskspace(
         plant=plant,
         context=plant_context,
-        body_name=["base_link", "left-foot_link", "right-foot_link"],
+        body_name=["left-foot_link"],
         base_body_name="world",
         q=q,
         qd=qd,
@@ -163,9 +160,11 @@ def main(argv=None):
     )
 
     # Translation Representation:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 6
+    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 3
 
     B = digit_idx.control_matrix
+    B = np.zeros_like(B)
+    B[digit_idx.actuated_joints_idx["left_leg"], digit_idx.actuation_idx['left_leg']] = 1.0
 
     ddx_desired = np.zeros((velocity_jacobian.shape[0],))
 
@@ -218,6 +217,18 @@ def main(argv=None):
         q = plant.GetPositions(plant_context)
         qd = plant.GetVelocities(plant_context)
 
+        floating_base_position = default_position[:7]
+        q[:7] = floating_base_position
+        plant.SetPositions(
+            context=plant_context,
+            q=q,
+        )
+        qd[:6] = 0.0
+        plant.SetVelocities(
+            context=plant_context,
+            v=qd,
+        )
+
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -228,7 +239,7 @@ def main(argv=None):
         task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_taskspace(
             plant=plant,
             context=plant_context,
-            body_name=["base_link", "left-foot_link", "right-foot_link"],
+            body_name=["left-foot_link"],
             base_body_name="world",
             q=q,
             qd=qd,
@@ -243,8 +254,8 @@ def main(argv=None):
         )
 
         # Calculate Desired Control:
-        kp = 100.0
-        kd = 2 * np.sqrt(kp)
+        kp = 25.0
+        kd = 0.0 * np.sqrt(kp)
 
         # Base Tracking:
         # Position:
@@ -261,24 +272,19 @@ def main(argv=None):
         foot_ddx = np.zeros_like(base_ddx)
         foot_dx = np.zeros_like(foot_ddx)
         left_foot_x = np.array([0.009485657750110333, 0.10003118944491024, -0.0006031847782857091])
-        right_foot_x = np.array([0.009501654135451067, -0.10004060651147584, -0.0006041746580776665])
         # Rotation:
         foot_ddw = np.zeros_like(base_ddx)
         foot_dw = np.zeros_like(foot_ddw)
         left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-        right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
 
         position_target = [
-            [base_ddx, base_dx, base_x],
             [foot_ddx, foot_dx, left_foot_x],
-            [foot_ddx, foot_dx, right_foot_x],
         ]
         rotation_target = [
-            [base_ddw, base_dw, base_w],
             [foot_ddw, foot_dw, left_foot_w],
-            [foot_ddw, foot_dw, right_foot_w],
         ]
-        task_jacobian = np.split(velocity_jacobian, 3)
+        # task_jacobian = np.split(velocity_jacobian, 3)
+        task_jacobian = [velocity_jacobian]
 
         loop_iterables = zip(task_transform, task_jacobian, position_target, rotation_target)
 
@@ -298,6 +304,8 @@ def main(argv=None):
             )
 
         control_input = np.concatenate(control_input, axis=0)
+        # control_input[:3] = 0.0
+        # control_input = np.zeros_like(control_input)
 
         constraint_constants = (M, C, tau_g, B, H, H_bias)
 
@@ -320,6 +328,9 @@ def main(argv=None):
         accelerations = solution.x[:dv_size]
         torque = solution.x[dv_size:dv_size + u_size]
         constraint_force = solution.x[dv_size + u_size:]
+
+        # Torque Test:
+        # torque = np.zeros_like(torque)
 
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()

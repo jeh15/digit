@@ -218,6 +218,18 @@ def main(argv=None):
         q = plant.GetPositions(plant_context)
         qd = plant.GetVelocities(plant_context)
 
+        floating_base_position = default_position[:7]
+        q[:7] = floating_base_position
+        plant.SetPositions(
+            context=plant_context,
+            q=q,
+        )
+        qd[:6] = 0.0
+        plant.SetVelocities(
+            context=plant_context,
+            v=qd,
+        )
+
         M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
             plant=plant,
             context=plant_context,
@@ -320,6 +332,22 @@ def main(argv=None):
         accelerations = solution.x[:dv_size]
         torque = solution.x[dv_size:dv_size + u_size]
         constraint_force = solution.x[dv_size + u_size:]
+
+        # Torque Test:
+        torque = np.zeros_like(torque)
+        # torque[9] = 1.0 * np.sin(2 * np.pi * current_time)
+
+        # floating_base_position = default_position[:8]
+        # q[:8] = floating_base_position
+        # plant.SetPositions(
+        #     context=plant_context,
+        #     q=q,
+        # )
+        # qd[:7] = 0.0
+        # plant.SetVelocities(
+        #     context=plant_context,
+        #     v=qd,
+        # )
 
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()

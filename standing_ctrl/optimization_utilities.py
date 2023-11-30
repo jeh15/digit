@@ -61,8 +61,8 @@ def equality_constraints(
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
     # dynamics = M @ dv + C - tau_g - B @ u
 
-    kinematic = H @ dv + H_bias
-    # kinematic = H @ dv
+    # kinematic = H @ dv + H_bias
+    kinematic = H @ dv
 
     equality_constraints = jnp.concatenate(
         [dynamics, kinematic],
@@ -113,14 +113,28 @@ def objective(
     ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
     task_objective = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
 
-    control_objective = jnp.sum(u ** 2)
+    # Minimize Arm Movement:
+    # Left Arm: 16, 17, 18, 19
+    # Right Arm: 30, 31, 32, 33
+    arm_movement = (
+        jnp.sum(dv[16:20] ** 2) 
+        + jnp.sum(dv[30:34] ** 2)
+    )
 
+    # Regularization:
+    control_objective = jnp.sum(u ** 2)
     constraint_objective = jnp.sum(f ** 2)
 
-    task_weight = 1.0
+    task_weight = 1000.0
     control_weight = 0.01
     constraint_weight = 0.01
-    objective_value = task_weight * task_objective + control_weight * control_objective + constraint_weight * constraint_objective
+    arm_movement_weight = 10.0
+    objective_value = (
+        task_weight * task_objective 
+        + control_weight * control_objective 
+        + constraint_weight * constraint_objective
+        + arm_movement_weight * arm_movement
+    )
 
     # objective_value = task_objective
 
@@ -266,7 +280,7 @@ def initialize_program(
         eps_dual_inf=1e-5,
         check_termination=10,
         delta=1e-6,
-        polish_refine_iter=5,
+        polish_refine_iter=10,
     )
 
     return program
