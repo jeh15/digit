@@ -70,6 +70,25 @@ def main(argv=None):
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
 
+    # Set Default Position:
+    default_position = np.array(
+        [
+            9.99999899e-01, -4.61573022e-05, 4.74404927e-04, -1.40450514e-05,
+            4.59931778e-02, -1.77557628e-04, 1.03043887e+00, 3.65207270e-01,
+            -7.69435176e-03, 3.15664484e-01, 3.57537366e-01, -3.30752611e-01,
+            -1.15794714e-02, -1.31615552e-01, 1.24398172e-01, 1.30620121e-01,
+            -1.15685622e-02, -1.50543436e-01, 1.09212242e+00, 1.59629876e-04,
+            -1.39115280e-01, -3.65746560e-01, 7.48726435e-03, -3.15664484e-01,
+            -3.57609271e-01, 3.30800563e-01, 1.16105788e-02, 1.31500503e-01,
+            -1.24536230e-01, -1.30630449e-01, 1.11680197e-02, 1.50514674e-01,
+            -1.09207448e+00, -1.74969684e-04, 1.39105692e-01,
+        ]
+    )
+
+    plant.SetDefaultPositions(
+        q=default_position,
+    )
+
     # Connect Vector Source to Digit's Actuators:
     actuation_vector = np.zeros(
         plant.num_actuators(),
@@ -101,29 +120,7 @@ def main(argv=None):
     simulator.set_target_realtime_rate(1.0)
     simulator.Initialize()
 
-    end_time = 60.0
-    dt = 0.001
-    current_time = 0.0
-
-    simulator.AdvanceTo(dt)
-
-    context = simulator.get_context()
-    plant_context = plant.GetMyContextFromRoot(context)
-
-    # Set Default Position:
-    default_position = np.array(
-        [
-            9.99999899e-01, -4.61573022e-05, 4.74404927e-04, -1.40450514e-05,
-            4.59931778e-02, -1.77557628e-04, 1.03043887e+00, 3.65207270e-01,
-            -7.69435176e-03, 3.15664484e-01, 3.57537366e-01, -3.30752611e-01,
-            -1.15794714e-02, -1.31615552e-01, 1.24398172e-01, 1.30620121e-01,
-            -1.15685622e-02, -1.50543436e-01, 1.09212242e+00, 1.59629876e-04,
-            -1.39115280e-01, -3.65746560e-01, 7.48726435e-03, -3.15664484e-01,
-            -3.57609271e-01, 3.30800563e-01, 1.16105788e-02, 1.31500503e-01,
-            -1.24536230e-01, -1.30630449e-01, 1.11680197e-02, 1.50514674e-01,
-            -1.09207448e+00, -1.74969684e-04, 1.39105692e-01,
-        ]
-    )
+    # Set Default State:
     default_velocity = np.zeros((plant.num_velocities(),))
     plant.SetPositions(
         context=plant_context,
@@ -202,9 +199,17 @@ def main(argv=None):
         (dv_size, u_size, f_size),
     )
 
-    # Initialize Time::
-    target_time = plant_context.get_time() + dt
-    current_time = plant_context.get_time()
+    # Set Simulation Parameters:
+    end_time = 60.0
+    dt = 0.001
+    current_time = 0.0
+
+    context = simulator.get_context()
+    plant_context = plant.GetMyContextFromRoot(context)
+
+    # Initialize Time:
+    target_time = context.get_time() + dt
+    current_time = context.get_time()
 
     # Run Simulation:
     while current_time < end_time:

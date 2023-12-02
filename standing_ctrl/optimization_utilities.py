@@ -48,6 +48,11 @@ def equality_constraints(
         Dynamics:
         M @ dv + C @ v - tau_g - B @ u - H.T @ f = 0
 
+        TODO:
+        Add J.T @ z
+        where z are the ground reaction forces and J is the spatial velocity jacobian.
+        M @ dv + C @ v - tau_g - B @ u - H.T @ f - J.T @ z = 0
+
         Holonomic Constraints:
         H @ dv + H_bias = 0
     """
@@ -61,16 +66,16 @@ def equality_constraints(
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f
     # dynamics = M @ dv + C - tau_g - B @ u
 
-    kinematic = H @ dv + H_bias
+    # kinematic = H @ dv + H_bias
     # kinematic = H @ dv
 
-    equality_constraints = jnp.concatenate(
-        [dynamics, kinematic],
-    )
-
     # equality_constraints = jnp.concatenate(
-    #     [dynamics],
+    #     [dynamics, kinematic],
     # )
+
+    equality_constraints = jnp.concatenate(
+        [dynamics],
+    )
 
     return equality_constraints
 
@@ -111,7 +116,21 @@ def objective(
 
     # Calculate objective:
     ddx_task = bias_spatial_acceleration + spatial_velocity_jacobian @ dv
-    task_objective = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
+
+    # Quick Fix find a more principled approach:
+    ddx_base, ddx_left_foot, ddx_right_foot = jnp.split(ddx_task, 3)
+    desired_base, desired_left_foot, desired_right_foot = jnp.split(desired_task_acceleration, 3)
+
+    base_tracking_weight = 1000000.0
+    foot_tracking_weight = 1000.0
+    base_error = base_tracking_weight * (ddx_base - desired_base) ** 2
+    left_foot_error = foot_tracking_weight * (ddx_left_foot - desired_left_foot) ** 2
+    right_foot_error = foot_tracking_weight * (ddx_right_foot - desired_right_foot) ** 2
+
+    task_objective = jnp.sum(
+        (base_error + left_foot_error + right_foot_error),
+    )
+    # task_objective = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
 
     # Minimize Arm Movement:
     # Left Arm: 16, 17, 18, 19
@@ -125,7 +144,7 @@ def objective(
     control_objective = jnp.sum(u ** 2)
     constraint_objective = jnp.sum(f ** 2)
 
-    task_weight = 1000.0
+    task_weight = 1.0
     control_weight = 0.01
     constraint_weight = 0.01
     arm_movement_weight = 10.0

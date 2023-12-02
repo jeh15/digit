@@ -1,6 +1,6 @@
 import numpy as np
 from pydrake.multibody.plant import MultibodyPlant, CoulombFriction
-from pydrake.multibody.tree import FixedOffsetFrame, WeldJoint
+from pydrake.multibody.tree import FixedOffsetFrame
 from pydrake.math import RigidTransform
 from pydrake.geometry import HalfSpace
 
@@ -14,6 +14,8 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
     left_heel_spring_position = np.array([[0.113789, -0.011056, 0]]).T
     stiffness = 1e6
     damping = 2e3
+    # stiffness = np.inf
+    # damping = 0
     # stiffness = 1e8
     # damping = 2e3
     # Left Achilles Rod:
@@ -314,6 +316,6 @@ def teststand_configuration(
         frame_on_parent_F=plant.world_frame(),
         frame_on_child_M=base_frame,
         X_FM=RigidTransform(
-            p=np.array([0.0, 0.0, 1.2]),
+            p=np.array([4.59931778e-02, -1.77557628e-04, 1.03043887e+00]),
         ),
     )
