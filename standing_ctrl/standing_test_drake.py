@@ -160,13 +160,16 @@ def main(argv=None):
     )
 
     # Translation Representation:
-    dv_size, u_size, f_size = plant.num_velocities(), plant.num_actuators(), 6
+    dv_size, u_size, f_size, z_size = plant.num_velocities(), plant.num_actuators(), 6, 12
 
     B = digit_idx.control_matrix
 
     ddx_desired = np.zeros((velocity_jacobian.shape[0],))
 
-    constraint_constants = (M, C, tau_g, B, H, H_bias)
+    # feet_velocity_jacobian = velocity_jacobian[6:, :]
+    base_J, left_foot_J, right_foot_J = np.split(velocity_jacobian, 3)
+    feet_velocity_jacobian = np.concatenate([left_foot_J, right_foot_J], axis=0)
+    constraint_constants = (M, C, tau_g, B, H, H_bias, feet_velocity_jacobian)
 
     objective_constants = (
         velocity_jacobian,
@@ -177,7 +180,7 @@ def main(argv=None):
     # Initialize Solver:
     program = osqp.OSQP()
     equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
-        plant=plant,
+        optimization_size=(dv_size, u_size, f_size, z_size),
     )
     program = optimization_utilities.initialize_program(
         constraint_constants=constraint_constants,
@@ -186,7 +189,7 @@ def main(argv=None):
         equality_functions=equality_fn,
         inequality_functions=inequality_fn,
         objective_functions=objective_fn,
-        optimization_size=(dv_size, u_size, f_size),
+        optimization_size=(dv_size, u_size, f_size, z_size),
     )
     # Create Isolated Update Function:
     update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
@@ -196,7 +199,7 @@ def main(argv=None):
         equality_fn,
         inequality_fn,
         objective_fn,
-        (dv_size, u_size, f_size),
+        (dv_size, u_size, f_size, z_size),
     )
 
     # Set Simulation Parameters:
@@ -248,8 +251,20 @@ def main(argv=None):
         )
 
         # Calculate Desired Control:
-        kp = 100.0
-        kd = 2 * np.sqrt(kp)
+        kp_position_base = 200.0
+        kd_position_base = 1 * np.sqrt(kp_position_base)
+        kp_rotation_base = 100.0
+        kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
+        kp_position_feet = 10.0
+        kd_position_feet = 2 * np.sqrt(kp_position_feet)
+        kp_rotation_feet = 100.0
+        kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
+
+        control_gains = [
+            [kp_position_base, kd_position_base, kp_rotation_base, kd_rotation_base],
+            [kp_position_feet, kd_position_feet, kp_rotation_feet, kd_rotation_feet],
+            [kp_position_feet, kd_position_feet, kp_rotation_feet, kd_rotation_feet],
+        ]
 
         # Base Tracking:
         # Position:
@@ -271,7 +286,9 @@ def main(argv=None):
         foot_ddw = np.zeros_like(base_ddx)
         foot_dw = np.zeros_like(foot_ddw)
         left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
+        # left_foot_w = np.array([9.99984167e-01, 2.61407089e-04, -5.52833537e-03, 1.01688480e-03])
         right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
+        # right_foot_w = np.array([9.99975894e-01, 5.17854946e-06, -6.90341587e-03, -7.45056438e-04])
 
         position_target = [
             [base_ddx, base_dx, base_x],
@@ -285,26 +302,29 @@ def main(argv=None):
         ]
         task_jacobian = np.split(velocity_jacobian, 3)
 
-        loop_iterables = zip(task_transform, task_jacobian, position_target, rotation_target)
+        loop_iterables = zip(task_transform, task_jacobian, position_target, rotation_target, control_gains)
 
         # Calculate Desired Control:
         control_input = []
-        for transform, J, x_target, w_target in loop_iterables:
+        for transform, J, x_target, w_target, gains in loop_iterables:
             task_position = transform.translation()
             task_rotation = transform.rotation().ToQuaternion()
             task_velocity = J @ qd
             target_rotation = Quaternion(w_target[2])
             # From Ickes, B. P. (1970): For control purposes the last three elements of the quaternion define the roll, pitch, and yaw rotational errors.
             rotation_error = target_rotation.multiply(task_rotation.conjugate()).xyz()
-            position_control = x_target[0] + kd * (x_target[1] - task_velocity[3:]) + kp * (x_target[2] - task_position)
-            rotation_control = w_target[0] + kd * (w_target[1] - task_velocity[:3]) + kp * (rotation_error)
+            position_control = x_target[0] + gains[1] * (x_target[1] - task_velocity[3:]) + gains[0] * (x_target[2] - task_position)
+            rotation_control = w_target[0] + gains[2] * (w_target[1] - task_velocity[:3]) + gains[3] * (rotation_error)
             control_input.append(
                 np.concatenate([rotation_control, position_control])
             )
 
         control_input = np.concatenate(control_input, axis=0)
 
-        constraint_constants = (M, C, tau_g, B, H, H_bias)
+        # feet_velocity_jacobian = velocity_jacobian[6:, :]
+        base_J, left_foot_J, right_foot_J = np.split(velocity_jacobian, 3)
+        feet_velocity_jacobian = np.concatenate([left_foot_J, right_foot_J], axis=0)
+        constraint_constants = (M, C, tau_g, B, H, H_bias, feet_velocity_jacobian)
 
         objective_constants = (
             velocity_jacobian,
@@ -324,7 +344,8 @@ def main(argv=None):
         # Unpack Optimization Solution:
         accelerations = solution.x[:dv_size]
         torque = solution.x[dv_size:dv_size + u_size]
-        constraint_force = solution.x[dv_size + u_size:]
+        constraint_force = solution.x[dv_size + u_size:dv_size + u_size + f_size]
+        reaction_force = solution.x[dv_size + u_size + f_size:]
 
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()

@@ -48,8 +48,6 @@ class DigitUtilities():
                 ),
                 axis=0,
             )
-            self.control_matrix = np.zeros((self.num_joints, self.num_motors))
-            self.control_matrix[actuated_joints_idx, actuation_idx] = 1.0
 
             # Left Mappings:
             self.left_hip_roll = {
@@ -75,6 +73,14 @@ class DigitUtilities():
             self.left_toe_b = {
                 "actuation_idx": 5,
                 "joint_idx": 7 + base_offset,
+            }
+            self.left_toe_pitch = {
+                "actuation_idx": None,
+                "joint_idx": 8 + base_offset,
+            }
+            self.left_toe_roll = {
+                "actuation_idx": None,
+                "joint_idx": 9 + base_offset,
             }
             self.left_shoulder_roll = {
                 "actuation_idx": 6,
@@ -118,6 +124,14 @@ class DigitUtilities():
                 "actuation_idx": 15,
                 "joint_idx": 21 + base_offset,
             }
+            self.right_toe_pitch = {
+                "actuation_idx": None,
+                "joint_idx": 22 + base_offset,
+            }
+            self.right_toe_roll = {
+                "actuation_idx": None,
+                "joint_idx": 23 + base_offset,
+            }
             self.right_shoulder_roll = {
                 "actuation_idx": 16,
                 "joint_idx": 24 + base_offset,
@@ -134,6 +148,22 @@ class DigitUtilities():
                 "actuation_idx": 19,
                 "joint_idx": 27 + base_offset,
             }
+
+            # Control Input Mapping:
+            self.control_matrix = np.zeros((self.num_joints, self.num_motors))
+            self.control_matrix[actuated_joints_idx, actuation_idx] = 1.0
+            self.control_matrix[
+                self.left_toe_pitch["joint_idx"], self.left_toe_a["actuation_idx"]
+            ] = -1.0
+            self.control_matrix[
+                self.left_toe_pitch["joint_idx"], self.left_toe_b["actuation_idx"]
+            ] = 1.0
+            self.control_matrix[
+                self.left_toe_roll["joint_idx"], self.left_toe_a["actuation_idx"]
+            ] = 1.0 / 3.0
+            self.control_matrix[
+                self.left_toe_roll["joint_idx"], self.left_toe_b["actuation_idx"]
+            ] = 1.0 / 3.0
 
         else:
             self.num_joints = 28
