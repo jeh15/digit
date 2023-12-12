@@ -53,7 +53,7 @@ def equality_constraints(
         where z are the ground reaction forces and J is the spatial velocity jacobian.
         M @ dv + C @ v - tau_g - B @ u - H.T @ f - J.T @ z = 0
 
-        Holonomic Constraints:
+        Holonomic Constraints: (Maybe make this an inequality constraint?)
         H @ dv + H_bias = 0
     """
     # Split optimization variables:
