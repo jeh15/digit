@@ -50,10 +50,11 @@ def main(argv=None):
     parser.AddModels(filepath)
 
     # Apply closed loop kinematic constraints:
-    model_utilities.apply_kinematic_constraints(plant=plant)
+    # Adding more compliance to the constraints makes the foot stay on the ground better.
+    model_utilities.apply_kinematic_constraints(plant=plant, stiffness=np.inf, damping=0)
 
     # Add Terrain:
-    model_utilities.add_terrain(plant=plant)
+    model_utilities.add_terrain(plant=plant, mu_static=1.0, mu_dynamic=1.0)
 
     # Add auxiliary frames:
     auxiliary_frames = model_utilities.add_auxiliary_frames(plant=plant)
@@ -160,7 +161,7 @@ def main(argv=None):
     )
 
     # Translation Representation:
-    dv_size, u_size, f_size, z_size = plant.num_velocities(), plant.num_actuators(), 6, 12
+    dv_size, u_size, f_size, z_size = plant.num_velocities(), plant.num_actuators(), 2, 12
 
     B = digit_idx.control_matrix
 
@@ -214,6 +215,7 @@ def main(argv=None):
     target_time = context.get_time() + dt
     current_time = context.get_time()
 
+    i = 0
     # Run Simulation:
     while current_time < end_time:
         # Advance simulation:
@@ -251,13 +253,13 @@ def main(argv=None):
         )
 
         # Calculate Desired Control:
-        kp_position_base = 200.0
-        kd_position_base = 1 * np.sqrt(kp_position_base)
-        kp_rotation_base = 100.0
+        kp_position_base = 100.0
+        kd_position_base = 2 * np.sqrt(kp_position_base)
+        kp_rotation_base = 10.0
         kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
-        kp_position_feet = 10.0
+        kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 100.0
+        kp_rotation_feet = 0.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         control_gains = [
@@ -347,6 +349,9 @@ def main(argv=None):
         constraint_force = solution.x[dv_size + u_size:dv_size + u_size + f_size]
         reaction_force = solution.x[dv_size + u_size + f_size:]
 
+        if i % 100 == 0:
+            print(f"Torque: {torque}")
+
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()
         actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
@@ -359,6 +364,8 @@ def main(argv=None):
         # Get current time and set target time:
         current_time = conxtext.get_time()
         target_time = current_time + dt
+
+        i += 1
 
 
 if __name__ == "__main__":

@@ -1010,6 +1010,91 @@
         <child link="right-hand_link"/>
     </joint>
 
+    <!-- Visual for Achilles Rod Points -->
+    <!-- <link name="right_achilles_hip">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0.0 0.0 0.046" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.01"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+    </link>
+
+    <joint name="right_achilles_hip_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <parent link="right-hip-pitch_link"/>
+        <child link="right_achilles_hip"/>
+    </joint>
+
+    <link name="right_achilles_heel">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0.113789 0.011056 0" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.01"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+    </link>
+
+    <joint name="right_achilles_heel_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <parent link="right-heel-spring_link"/>
+        <child link="right_achilles_heel"/>
+    </joint>
+
+    <link name="left_achilles_hip">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0.0 0.0 0.046" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.01"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+    </link>
+
+    <joint name="left_achilles_hip_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <parent link="left-hip-pitch_link"/>
+        <child link="left_achilles_hip"/>
+    </joint>
+
+    <link name="left_achilles_heel">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0"/>
+            <inertia ixx="0" iyy="0" izz="0" ixy="0" ixz="0" iyz="0"/>   
+        </inertial>
+        <visual>
+            <origin xyz="0.113789 -0.011056 0" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.01"/>
+            </geometry>
+            <material name="blue"/>
+        </visual>
+    </link>
+
+    <joint name="left_achilles_heel_joint" type="fixed">
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <parent link="left-heel-spring_link"/>
+        <child link="left_achilles_heel"/>
+    </joint> -->
+
     <!-- Actuators: -->
 
     <transmission name="left-hip-roll">

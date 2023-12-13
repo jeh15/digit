@@ -25,7 +25,7 @@ def equality_constraints(
     C: jax.typing.ArrayLike,
     tau_g: jax.typing.ArrayLike,
     B: jax.typing.ArrayLike,
-    H: jax.typing.ArrayLike,
+    H_: jax.typing.ArrayLike,
     H_bias: jax.typing.ArrayLike,
     J: jax.typing.ArrayLike,
     split_indx: tuple[int, int, int],
@@ -48,11 +48,6 @@ def equality_constraints(
         The equality constraints.
 
         Dynamics:
-        M @ dv + C @ v - tau_g - B @ u - H.T @ f = 0
-
-        TODO:
-        Add J.T @ z
-        where z are the ground reaction forces and J is the spatial velocity jacobian.
         M @ dv + C @ v - tau_g - B @ u - H.T @ f - J.T @ z = 0
 
         Holonomic Constraints: (Maybe make this an inequality constraint?)
@@ -65,12 +60,28 @@ def equality_constraints(
     f = q[u_indx:f_indx]
     z = q[f_indx:]
 
+    H = jnp.array([
+        [
+            0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 0., 0.,
+            0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+            0., 0.
+        ],
+       [
+           0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+            0., 0., 0., 0., 0., 0., 0., 1., 1., 0., 0., 0., 0., 0., 0., 0.,
+            0., 0.
+        ]
+    ])
     # Calculate equality constraints:
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f - J.T @ z
-    # dynamics = M @ dv + C - tau_g - B @ u
 
-    kinematic = H @ dv + H_bias
-    # kinematic = H @ dv
+    # left knee: 9
+    # left tarsus: 10
+    # right knee: 23
+    # right tarsus: 24
+
+    # kinematic = H @ dv + H_bias
+    kinematic = H @ dv
 
     equality_constraints = jnp.concatenate(
         [dynamics, kinematic],
@@ -107,14 +118,8 @@ def inequality_constraints(
 
     # Reshape for easier indexing:
     z = jnp.reshape(z, (2, 6))
-    # z = jnp.reshape(z, (2, 3))
 
     # Constraint: |f_x| + |f_y| <= mu * f_z
-    # constraint_1 = z[:, 3] + z[:, 4] - friction * z[:, 5]
-    # constraint_2 = -z[:, 3] + z[:, 4] - friction * z[:, 5]
-    # constraint_3 = z[:, 3] - z[:, 4] - friction * z[:, 5]
-    # constraint_4 = -z[:, 3] - z[:, 4] - friction * z[:, 5]
-
     constraint_1 = z[:, -3] + z[:, -2] - friction * z[:, -1]
     constraint_2 = -z[:, -3] + z[:, -2] - friction * z[:, -1]
     constraint_3 = z[:, -3] - z[:, -2] - friction * z[:, -1]
@@ -156,8 +161,8 @@ def objective(
     ddx_base, ddx_left_foot, ddx_right_foot = jnp.split(ddx_task, 3)
     desired_base, desired_left_foot, desired_right_foot = jnp.split(desired_task_acceleration, 3)
 
-    base_tracking_weight = 100.0
-    foot_tracking_weight = 10.0
+    base_tracking_weight = 10.0
+    foot_tracking_weight = 100.0
     base_error = base_tracking_weight * (ddx_base - desired_base) ** 2
     left_foot_error = foot_tracking_weight * (ddx_left_foot - desired_left_foot) ** 2
     right_foot_error = foot_tracking_weight * (ddx_right_foot - desired_right_foot) ** 2
@@ -165,7 +170,6 @@ def objective(
     task_objective = jnp.sum(
         (base_error + left_foot_error + right_foot_error),
     )
-    # task_objective = jnp.sum((ddx_task - desired_task_acceleration) ** 2)
 
     # Minimize Arm Movement:
     # Left Arm: 16, 17, 18, 19
@@ -182,10 +186,10 @@ def objective(
     rotational_ground_reaction_objective = jnp.sum(z[:, :3] ** 2)
 
     task_weight = 1.0
-    control_weight = 1.0
-    constraint_weight = 1.0
-    translational_ground_reaction_weight = 1.0
-    rotational_ground_reaction_weight = 1.0
+    control_weight = 0.01
+    constraint_weight = 0.01
+    translational_ground_reaction_weight = 0.01
+    rotational_ground_reaction_weight = 0.01
     arm_movement_weight = 1.0
     objective_value = (
         task_weight * task_objective 
@@ -387,6 +391,7 @@ def update_program(
     # Generate Program Matricies:
     A_eq = np.asarray(A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, feet_velocity_jacobian))
     b_eq = np.asarray(-b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, feet_velocity_jacobian))
+
     A_ineq = A_ineq_fn(q)
     ub_ineq = -b_ineq_fn(q)
     lb_ineq = jnp.NINF * jnp.ones_like(ub_ineq)

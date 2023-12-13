@@ -5,19 +5,17 @@ from pydrake.math import RigidTransform
 from pydrake.geometry import HalfSpace
 
 
-def apply_kinematic_constraints(plant: MultibodyPlant):
+def apply_kinematic_constraints(
+    plant: MultibodyPlant,
+    stiffness: float = 1e6,
+    damping: float = 2e3,
+):
     # Add SAP Constraints for closed kinematic chains:
     achilles_distance = 0.5
     left_heel_spring_frame = plant.GetFrameByName("left-heel-spring_link")
     left_hip_frame = plant.GetFrameByName("left-hip-pitch_link")
     left_hip_position = np.array([[0.0, 0.0, 0.046]]).T
     left_heel_spring_position = np.array([[0.113789, -0.011056, 0]]).T
-    stiffness = 1e6
-    damping = 2e3
-    # stiffness = np.inf
-    # damping = 0
-    # stiffness = 1e8
-    # damping = 2e3
     # Left Achilles Rod:
     plant.AddDistanceConstraint(
         left_hip_frame.body(),
@@ -30,10 +28,10 @@ def apply_kinematic_constraints(plant: MultibodyPlant):
     )
 
     # Right Achilles Rod:
-    right_hip_frame = plant.GetFrameByName("right-hip-pitch_link")
     right_heel_spring_frame = plant.GetFrameByName("right-heel-spring_link")
+    right_hip_frame = plant.GetFrameByName("right-hip-pitch_link")
     right_hip_position = np.array([[0.0, 0.0, 0.046]]).T
-    right_heel_spring_position = np.array([[0.1, -0.01, 0]]).T
+    right_heel_spring_position = np.array([[0.113789, 0.011056, 0]]).T
     plant.AddDistanceConstraint(
         right_hip_frame.body(),
         right_hip_position,
@@ -171,10 +169,10 @@ def add_auxiliary_frames(
     plant.AddFrame(left_achilles_rod_hip_frame)
 
     # Right Achilles Rod:
-    right_hip_frame = plant.GetFrameByName("right-hip-pitch_link")
     right_heel_spring_frame = plant.GetFrameByName("right-heel-spring_link")
+    right_hip_frame = plant.GetFrameByName("right-hip-pitch_link")
     right_hip_position = np.array([[0.0, 0.0, 0.046]]).T
-    right_heel_spring_position = np.array([[0.1, -0.01, 0]]).T
+    right_heel_spring_position = np.array([[0.113789, 0.011056, 0]]).T
     right_achilles_rod_spring_frame = FixedOffsetFrame(
         name="right_achilles_rod_spring_frame",
         P=right_heel_spring_frame,
