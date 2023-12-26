@@ -39,6 +39,7 @@ def main(argv=None):
 
     builder = DiagramBuilder()
     time_step = 0.0005
+    dt = 0.001
     plant, scene_graph = AddMultibodyPlantSceneGraph(
         builder,
         time_step=time_step,
@@ -146,7 +147,11 @@ def main(argv=None):
     task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_taskspace(
         plant=plant,
         context=plant_context,
-        body_name=["base_link", "left-foot_link", "right-foot_link"],
+        body_name=[
+            "base_link",
+            "left-foot_link",
+            "right-foot_link",
+        ],
         base_body_name="world",
         q=q,
         qd=qd,
@@ -158,6 +163,18 @@ def main(argv=None):
         constraint_frames=constraint_frames,
         q=q,
         qd=qd,
+    )
+    yaw_state = np.vstack(
+        [
+            [
+                q[digit_idx.left_hip_yaw["joint_idx"]],
+                q[digit_idx.right_hip_yaw["joint_idx"]],
+            ],
+            [
+                qd[digit_idx.left_hip_yaw["joint_idx"]-1],
+                qd[digit_idx.right_hip_yaw["joint_idx"]-1],
+            ],
+        ],
     )
 
     # Translation Representation:
@@ -176,13 +193,16 @@ def main(argv=None):
         velocity_jacobian,
         bias_acceleration,
         ddx_desired,
+        yaw_state
     )
 
     # Initialize Solver:
     program = osqp.OSQP()
     equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
         optimization_size=(dv_size, u_size, f_size, z_size),
+        dt=dt,
     )
+
     program = optimization_utilities.initialize_program(
         constraint_constants=constraint_constants,
         objective_constants=objective_constants,
@@ -205,7 +225,6 @@ def main(argv=None):
 
     # Set Simulation Parameters:
     end_time = 60.0
-    dt = 0.001
     current_time = 0.0
 
     context = simulator.get_context()
@@ -238,7 +257,11 @@ def main(argv=None):
         task_transform, velocity_jacobian, bias_acceleration = dynamics_utilities.calculate_taskspace(
             plant=plant,
             context=plant_context,
-            body_name=["base_link", "left-foot_link", "right-foot_link"],
+            body_name=[
+                "base_link",
+                "left-foot_link",
+                "right-foot_link",
+            ],
             base_body_name="world",
             q=q,
             qd=qd,
@@ -251,11 +274,24 @@ def main(argv=None):
             q=q,
             qd=qd,
         )
+        yaw_state = np.vstack(
+            [
+                [
+                    q[digit_idx.left_hip_yaw["joint_idx"]],
+                    q[digit_idx.right_hip_yaw["joint_idx"]],
+                ],
+                [
+                    qd[digit_idx.left_hip_yaw["joint_idx"]-1],
+                    qd[digit_idx.right_hip_yaw["joint_idx"]-1],
+                ],
+            ],
+        )
 
+        # Add Yaw Rotation to stay inline with base link heading...
         # Calculate Desired Control:
-        kp_position_base = 100.0
+        kp_position_base = 150.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 10.0
+        kp_rotation_base = 100.0
         kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
@@ -288,9 +324,7 @@ def main(argv=None):
         foot_ddw = np.zeros_like(base_ddx)
         foot_dw = np.zeros_like(foot_ddw)
         left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-        # left_foot_w = np.array([9.99984167e-01, 2.61407089e-04, -5.52833537e-03, 1.01688480e-03])
         right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-        # right_foot_w = np.array([9.99975894e-01, 5.17854946e-06, -6.90341587e-03, -7.45056438e-04])
 
         position_target = [
             [base_ddx, base_dx, base_x],
@@ -304,7 +338,13 @@ def main(argv=None):
         ]
         task_jacobian = np.split(velocity_jacobian, 3)
 
-        loop_iterables = zip(task_transform, task_jacobian, position_target, rotation_target, control_gains)
+        loop_iterables = zip(
+            task_transform,
+            task_jacobian,
+            position_target,
+            rotation_target,
+            control_gains,
+        )
 
         # Calculate Desired Control:
         control_input = []
@@ -321,9 +361,9 @@ def main(argv=None):
                 np.concatenate([rotation_control, position_control])
             )
 
+        # Yaw Control:
         control_input = np.concatenate(control_input, axis=0)
 
-        # feet_velocity_jacobian = velocity_jacobian[6:, :]
         base_J, left_foot_J, right_foot_J = np.split(velocity_jacobian, 3)
         feet_velocity_jacobian = np.concatenate([left_foot_J, right_foot_J], axis=0)
         constraint_constants = (M, C, tau_g, B, H, H_bias, feet_velocity_jacobian)
@@ -332,6 +372,7 @@ def main(argv=None):
             velocity_jacobian,
             bias_acceleration,
             control_input,
+            yaw_state,
         )
 
         # Solve Optimization:
@@ -349,7 +390,7 @@ def main(argv=None):
         constraint_force = solution.x[dv_size + u_size:dv_size + u_size + f_size]
         reaction_force = solution.x[dv_size + u_size + f_size:]
 
-        if i % 100 == 0:
+        if i % 500 == 0:
             print(f"Torque: {torque}")
 
         # Unpack Optimization Solution:
