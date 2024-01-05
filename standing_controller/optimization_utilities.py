@@ -73,6 +73,13 @@ def equality_constraints(
         ]
     ])
     # Dynamic Constraints:
+    # Add Toe Diagonal Inertia:
+    # toe_diag = jnp.eye(M.shape[0])
+    # toe_diag = toe_diag.at[14, 14].set(0.1)
+    # toe_diag = toe_diag.at[15, 15].set(0.1)
+    # toe_diag = toe_diag.at[28, 28].set(0.1)
+    # toe_diag = toe_diag.at[29, 29].set(0.1)
+    # M_ = M + toe_diag
     dynamics = M @ dv + C - tau_g - B @ u - H.T @ f - J.T @ z
 
     # Kinematic Constraints:
@@ -198,9 +205,9 @@ def objective(
     control_objective = jnp.sum(u ** 2)
     constraint_objective = jnp.sum(f ** 2)
     translational_ground_reaction_objective = jnp.sum(z[:, 3:] ** 2)
-    x_rotational_ground_reaction_objective = jnp.sum(z[:, 1] ** 2)
-    y_rotational_ground_reaction_objective = jnp.sum(z[:, 2] ** 2)
-    z_rotational_ground_reaction_objective = jnp.sum(z[:, 3] ** 2)
+    x_rotational_ground_reaction_objective = jnp.sum(z[:, 0] ** 2)
+    y_rotational_ground_reaction_objective = jnp.sum(z[:, 1] ** 2)
+    z_rotational_ground_reaction_objective = jnp.sum(z[:, 2] ** 2)
 
     task_weight = 1.0
     control_weight = 0.0

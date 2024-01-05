@@ -164,6 +164,18 @@ class DigitUtilities():
             self.control_matrix[
                 self.left_toe_roll["joint_idx"], self.left_toe_b["actuation_idx"]
             ] = 1.0 / 3.0
+            self.control_matrix[
+                self.right_toe_pitch["joint_idx"], self.right_toe_a["actuation_idx"]
+            ] = -1.0
+            self.control_matrix[
+                self.right_toe_pitch["joint_idx"], self.right_toe_b["actuation_idx"]
+            ] = 1.0
+            self.control_matrix[
+                self.right_toe_roll["joint_idx"], self.right_toe_a["actuation_idx"]
+            ] = 1.0 / 3.0
+            self.control_matrix[
+                self.right_toe_roll["joint_idx"], self.right_toe_b["actuation_idx"]
+            ] = 1.0 / 3.0
 
         else:
             self.num_joints = 28

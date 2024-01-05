@@ -295,7 +295,7 @@ def main(argv=None):
         kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 0.0
+        kp_rotation_feet = 50.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         control_gains = [
