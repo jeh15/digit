@@ -8,7 +8,7 @@ class DigitUtilities():
     def __init__(
         self,
         floating_base: bool = False,
-    ): 
+    ):
         self.num_motors = 20
 
         self.actuation_idx = {

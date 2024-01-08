@@ -20,6 +20,8 @@ import model_utilities
 import digit_utilities
 import optimization_utilities
 
+np.set_printoptions(precision=3)
+
 
 def main(argv=None):
     # Load convenience class for digit:
@@ -391,7 +393,11 @@ def main(argv=None):
         reaction_force = solution.x[dv_size + u_size + f_size:]
 
         if i % 500 == 0:
-            print(f"Torque: {torque}")
+            print(f"Left Leg: {torque[:6]}")
+            print(f"Left Arm: {torque[6:10]}")
+            print(f"Right Leg: {torque[10:16]}")
+            print(f"Right Arm: {torque[16:]}")
+            print("---")
 
         # Unpack Optimization Solution:
         conxtext = simulator.get_context()
