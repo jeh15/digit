@@ -216,7 +216,7 @@ def objective(
     x_rotational_ground_reaction_weight = 0.1
     y_rotational_ground_reaction_weight = 0.1
     z_rotational_ground_reaction_weight = 0.1
-    arm_movement_weight = 1.0
+    arm_movement_weight = 100.0
     yaw_weight = 1.0
     objective_value = (
         task_weight * task_objective 
