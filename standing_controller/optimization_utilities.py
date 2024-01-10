@@ -142,6 +142,7 @@ def objective(
     bias_spatial_acceleration: jax.typing.ArrayLike,
     desired_task_acceleration: jax.typing.ArrayLike,
     yaw_state: jax.typing.ArrayLike,
+    arm_state: jax.typing.ArrayLike,
     dt: float,
     split_indx: tuple[int, int, int],
 ) -> jnp.ndarray:
@@ -177,9 +178,10 @@ def objective(
 
     # Minimize Yaw Rotation:
     yaw_indx = np.array([1, 15])
-    desired_heading = jnp.array([0.36, -0.36])
-    velocity = yaw_state[:, 1] + dv[yaw_indx] * dt
-    position = yaw_state[:, 0] + velocity * dt
+    # desired_heading = jnp.array([0.36, -0.36])
+    desired_heading = jnp.array([-0.00769435176, 0.00748726435])
+    velocity = yaw_state[1, :] + dv[yaw_indx] * dt
+    position = yaw_state[0, :] + velocity * dt
     yaw_position_objective = jnp.sum((desired_heading - position) ** 2)
     yaw_velocity_objective = jnp.sum(velocity ** 2)
     yaw_acceleration_objective = jnp.sum(dv[yaw_indx] ** 2)
@@ -196,15 +198,49 @@ def objective(
     # Minimize Arm Movement:
     # Left Arm: 16, 17, 18, 19
     # Right Arm: 30, 31, 32, 33
+    left_arm_dv = dv[16:20]
+    right_arm_dv = dv[30:34]
     arm_movement = (
-        jnp.sum(dv[16:20] ** 2) 
-        + jnp.sum(dv[30:34] ** 2)
+        jnp.sum(left_arm_dv ** 2) 
+        + jnp.sum(right_arm_dv ** 2)
     )
+
+    # Nominal Arm Position:
+    left_arm_nominal = jnp.array(
+        [-1.50543436e-01, 1.09212242e+00, 1.59629876e-04, -1.39115280e-01]
+    )
+    right_arm_nominal = jnp.array(
+        [1.50514674e-01, -1.09207448e+00, -1.74969684e-04, 1.39105692e-01]
+    ) 
+    left_arm_velocity = arm_state[1, :] + left_arm_dv * dt
+    left_arm_position = arm_state[0, :] + left_arm_velocity * dt
+    right_arm_velocity = arm_state[3, :] + right_arm_dv * dt
+    right_arm_position = arm_state[2, :] + right_arm_velocity * dt
+    left_arm_position_objective = jnp.sum((left_arm_nominal - left_arm_position) ** 2)
+    left_arm_velocity_objective = jnp.sum(left_arm_velocity ** 2)
+    right_arm_position_objective = jnp.sum((right_arm_nominal - right_arm_position) ** 2)
+    right_arm_velocity_objective = jnp.sum(right_arm_velocity ** 2)
+    nominal_arm_position = (
+        left_arm_position_objective
+        + right_arm_position_objective
+    )
+    arm_velocity = (
+        left_arm_velocity_objective
+        + right_arm_velocity_objective
+    )
+
+    # Arm Control:
+    left_arm_control = jnp.sum(u[6:10] ** 2)
+    right_arm_control = jnp.sum(u[16:20] ** 2)
+    arm_control_objective = left_arm_control + right_arm_control
 
     # Regularization:
     control_objective = jnp.sum(u ** 2)
     constraint_objective = jnp.sum(f ** 2)
-    translational_ground_reaction_objective = jnp.sum(z[:, 3:] ** 2)
+    # translational_ground_reaction_objective = jnp.sum(z[:, 3:] ** 2)
+    x_translational_ground_reaction_objective = jnp.sum(z[:, 3] ** 2)
+    y_translational_ground_reaction_objective = jnp.sum(z[:, 4] ** 2)
+    z_translational_ground_reaction_objective = jnp.sum(z[:, 5] ** 2)
     x_rotational_ground_reaction_objective = jnp.sum(z[:, 0] ** 2)
     y_rotational_ground_reaction_objective = jnp.sum(z[:, 1] ** 2)
     z_rotational_ground_reaction_objective = jnp.sum(z[:, 2] ** 2)
@@ -212,21 +248,32 @@ def objective(
     task_weight = 1.0
     control_weight = 0.0
     constraint_weight = 0.01
-    translational_ground_reaction_weight = 0.01
-    x_rotational_ground_reaction_weight = 0.1
-    y_rotational_ground_reaction_weight = 0.1
+    # translational_ground_reaction_weight = 0.01
+    x_translational_ground_reaction_weight = 0.01
+    y_translational_ground_reaction_weight = 0.01
+    z_translational_ground_reaction_weight = 0.0
+    x_rotational_ground_reaction_weight = 0.0
+    y_rotational_ground_reaction_weight = 0.0
     z_rotational_ground_reaction_weight = 0.1
-    arm_movement_weight = 100.0
-    yaw_weight = 1.0
+    arm_movement_weight = 1.0
+    nominal_position_weight = 1.0
+    arm_velocity_weight = 0.0
+    arm_control_objective_weight = 0.0
+    yaw_weight = 0.0
     objective_value = (
         task_weight * task_objective 
         + control_weight * control_objective 
         + constraint_weight * constraint_objective
-        + translational_ground_reaction_weight * translational_ground_reaction_objective
+        + x_translational_ground_reaction_weight * x_translational_ground_reaction_objective
+        + y_translational_ground_reaction_weight * y_translational_ground_reaction_objective
+        + z_translational_ground_reaction_weight * z_translational_ground_reaction_objective
         + x_rotational_ground_reaction_weight * x_rotational_ground_reaction_objective
         + y_rotational_ground_reaction_weight * y_rotational_ground_reaction_objective
         + z_rotational_ground_reaction_weight * z_rotational_ground_reaction_objective
         + arm_movement_weight * arm_movement
+        + nominal_position_weight * nominal_arm_position
+        + arm_velocity_weight * arm_velocity
+        + arm_control_objective_weight * arm_control_objective
         + yaw_weight * yaw_objective
     )
 
@@ -268,12 +315,13 @@ def initialize_optimization(
         split_indx,
     )
 
-    objective_fn = lambda q, J, bias, ddx_desired, yaw_state: objective(
+    objective_fn = lambda q, J, bias, ddx_desired, yaw_state, arm_state: objective(
         q,
         J,
         bias,
         ddx_desired,
         yaw_state,
+        arm_state,
         dt,
         split_indx,
     )
@@ -294,7 +342,7 @@ def initialize_optimization(
 
 def initialize_program(
     constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     program: OSQP,
     equality_functions: Callable,
     inequality_functions: Callable,
@@ -303,7 +351,7 @@ def initialize_program(
 ) -> OSQP:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, feet_velocity_jacobian = constraint_constants
-    spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state = objective_constants
+    spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state, arm_state = objective_constants
     dv_size, u_size, f_size, z_size = optimization_size
 
     # Unpack optimization functions:
@@ -359,8 +407,8 @@ def initialize_program(
         ],
     )
 
-    H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state)
-    f = f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state)
+    H = H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state, arm_state)
+    f = f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state, arm_state)
 
     # Convert to sparse:
     A = sparse.csc_matrix(
@@ -400,7 +448,7 @@ def initialize_program(
 
 def update_program(
     constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
-    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     program: OSQP,
     equality_functions: Callable,
     inequality_functions: Callable,
@@ -409,7 +457,7 @@ def update_program(
 ) -> tuple[Solution, OSQP]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, feet_velocity_jacobian = constraint_constants
-    spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state = objective_constants
+    spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state, arm_state = objective_constants
     dv_size, u_size, f_size, z_size = optimization_size
 
     # Unpack optimization functions:
@@ -464,8 +512,8 @@ def update_program(
         ],
     )
     
-    H = np.asarray(H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state))
-    f = np.asarray(f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state))
+    H = np.asarray(H_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state, arm_state))
+    f = np.asarray(f_fn(q, spatial_velocity_jacobian, bias_spatial_acceleration, ddx_desired, yaw_state, arm_state))
 
     # Convert to sparse:
     A = sparse.csc_matrix(

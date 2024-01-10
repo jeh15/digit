@@ -28,13 +28,16 @@ class DigitUtilities():
         if floating_base:
             self.num_joints = 34
 
+            # Relative to Velocity Generalized Coordinates:
             base_offset = 6
 
+            # Relative to Position Generalized Coordinates:
             self.base_indx = {
                 "rotation": [0, 1, 2, 3],
                 "position": [4, 5, 6],
             }
 
+            # Relative to Velocity Generalized Coordinates:
             self.actuated_joints_idx = {
                 "left_leg": np.array([0, 1, 2, 3, 6, 7]) + base_offset,
                 "left_arm": np.array([10, 11, 12, 13]) + base_offset,

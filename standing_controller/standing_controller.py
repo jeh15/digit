@@ -78,14 +78,15 @@ def main(argv=None):
     default_position = np.array(
         [
             9.99999899e-01, -4.61573022e-05, 4.74404927e-04, -1.40450514e-05,
-            4.59931778e-02, -1.77557628e-04, 1.03043887e+00, 3.65207270e-01,
-            -7.69435176e-03, 3.15664484e-01, 3.57537366e-01, -3.30752611e-01,
-            -1.15794714e-02, -1.31615552e-01, 1.24398172e-01, 1.30620121e-01,
-            -1.15685622e-02, -1.50543436e-01, 1.09212242e+00, 1.59629876e-04,
-            -1.39115280e-01, -3.65746560e-01, 7.48726435e-03, -3.15664484e-01,
-            -3.57609271e-01, 3.30800563e-01, 1.16105788e-02, 1.31500503e-01,
-            -1.24536230e-01, -1.30630449e-01, 1.11680197e-02, 1.50514674e-01,
-            -1.09207448e+00, -1.74969684e-04, 1.39105692e-01,
+            4.59931778e-02, -1.77557628e-04, 1.03043887e+00,
+            3.65207270e-01, -7.69435176e-03, 3.15664484e-01, 3.57537366e-01,
+            -3.30752611e-01, -1.15794714e-02, -1.31615552e-01, 1.24398172e-01,
+            1.30620121e-01, -1.15685622e-02,
+            -1.50543436e-01, 1.09212242e+00, 1.59629876e-04, -1.39115280e-01,
+            -3.65746560e-01, 7.48726435e-03, -3.15664484e-01, -3.57609271e-01,
+            3.30800563e-01, 1.16105788e-02, 1.31500503e-01, -1.24536230e-01,
+            -1.30630449e-01, 1.11680197e-02,
+            1.50514674e-01, -1.09207448e+00, -1.74969684e-04, 1.39105692e-01,
         ]
     )
 
@@ -169,15 +170,23 @@ def main(argv=None):
     yaw_state = np.vstack(
         [
             [
-                q[digit_idx.left_hip_yaw["joint_idx"]],
-                q[digit_idx.right_hip_yaw["joint_idx"]],
+                q[digit_idx.left_hip_yaw["joint_idx"]+1],
+                q[digit_idx.right_hip_yaw["joint_idx"]+1],
             ],
             [
-                qd[digit_idx.left_hip_yaw["joint_idx"]-1],
-                qd[digit_idx.right_hip_yaw["joint_idx"]-1],
+                qd[digit_idx.left_hip_yaw["joint_idx"]],
+                qd[digit_idx.right_hip_yaw["joint_idx"]],
             ],
         ],
     )
+    arm_state = np.vstack(
+            [
+                [q[digit_idx.actuated_joints_idx["left_arm"]+1]],
+                [qd[digit_idx.actuated_joints_idx["left_arm"]]],
+                [q[digit_idx.actuated_joints_idx["right_arm"]+1]],
+                [qd[digit_idx.actuated_joints_idx["right_arm"]]],
+            ]
+        )
 
     # Translation Representation:
     dv_size, u_size, f_size, z_size = plant.num_velocities(), plant.num_actuators(), 2, 12
@@ -195,7 +204,8 @@ def main(argv=None):
         velocity_jacobian,
         bias_acceleration,
         ddx_desired,
-        yaw_state
+        yaw_state,
+        arm_state,
     )
 
     # Initialize Solver:
@@ -279,14 +289,22 @@ def main(argv=None):
         yaw_state = np.vstack(
             [
                 [
-                    q[digit_idx.left_hip_yaw["joint_idx"]],
-                    q[digit_idx.right_hip_yaw["joint_idx"]],
+                    q[digit_idx.left_hip_yaw["joint_idx"]+1],
+                    q[digit_idx.right_hip_yaw["joint_idx"]+1],
                 ],
                 [
-                    qd[digit_idx.left_hip_yaw["joint_idx"]-1],
-                    qd[digit_idx.right_hip_yaw["joint_idx"]-1],
+                    qd[digit_idx.left_hip_yaw["joint_idx"]],
+                    qd[digit_idx.right_hip_yaw["joint_idx"]],
                 ],
             ],
+        )
+        arm_state = np.vstack(
+            [
+                [q[digit_idx.actuated_joints_idx["left_arm"]+1]],
+                [qd[digit_idx.actuated_joints_idx["left_arm"]]],
+                [q[digit_idx.actuated_joints_idx["right_arm"]+1]],
+                [qd[digit_idx.actuated_joints_idx["right_arm"]]],
+            ]
         )
 
         # Add Yaw Rotation to stay inline with base link heading...
@@ -375,6 +393,7 @@ def main(argv=None):
             bias_acceleration,
             control_input,
             yaw_state,
+            arm_state,
         )
 
         # Solve Optimization:
