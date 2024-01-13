@@ -70,15 +70,6 @@ def main(argv=None):
         (auxiliary_frames["right_toe_b"]["roll_frame"], auxiliary_frames["right_toe_b"]["motor_frame"]),
     ]
 
-    # constraint_frames = [
-    #     (auxiliary_frames["left_achilles_rod"]["hip_frame"], auxiliary_frames["left_achilles_rod"]["spring_frame"]),
-    #     (auxiliary_frames["left_toe_a"]["roll_frame"], auxiliary_frames["left_toe_a"]["motor_frame"]),
-    #     (auxiliary_frames["left_toe_b"]["roll_frame"], auxiliary_frames["left_toe_b"]["motor_frame"]),
-    #     (auxiliary_frames["right_achilles_rod"]["hip_frame"], auxiliary_frames["right_achilles_rod"]["spring_frame"]),
-    #     (auxiliary_frames["right_toe_a"]["roll_frame"], auxiliary_frames["right_toe_a"]["motor_frame"]),
-    #     (auxiliary_frames["right_toe_b"]["roll_frame"], auxiliary_frames["right_toe_b"]["motor_frame"]),
-    # ]
-
     # Finalize:
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
@@ -198,7 +189,12 @@ def main(argv=None):
         )
 
     # Translation Representation:
-    dv_size, u_size, f_size, z_size = plant.num_velocities(), plant.num_actuators(), 6, 12
+    dv_size, u_size, f_size, z_size, g_size, r_size = plant.num_velocities(), plant.num_actuators(), 6, 12, 18, 4
+    dv_indx = dv_size
+    u_indx = u_size + dv_indx
+    f_indx = f_size + u_indx
+    z_indx = z_size + f_indx
+    g_indx = g_size + z_indx
 
     B = digit_idx.control_matrix
 
@@ -207,11 +203,11 @@ def main(argv=None):
     # feet_velocity_jacobian = velocity_jacobian[6:, :]
     base_J, left_foot_J, right_foot_J = np.split(velocity_jacobian, 3)
     feet_velocity_jacobian = np.concatenate([left_foot_J, right_foot_J], axis=0)
-    constraint_constants = (M, C, tau_g, B, H, H_bias, feet_velocity_jacobian)
+    weight = plant.CalcTotalMass(context=plant_context) * 9.81
+    previous_ground_reaction_forces = np.array([weight/2, weight/2])
+    constraint_constants = (M, C, tau_g, B, H, H_bias, velocity_jacobian, bias_acceleration, previous_ground_reaction_forces)
 
     objective_constants = (
-        velocity_jacobian,
-        bias_acceleration,
         ddx_desired,
         yaw_state,
         arm_state,
@@ -220,7 +216,7 @@ def main(argv=None):
     # Initialize Solver:
     program = osqp.OSQP()
     equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
-        optimization_size=(dv_size, u_size, f_size, z_size),
+        optimization_size=(dv_size, u_size, f_size, z_size, g_size, r_size),
         dt=dt,
     )
 
@@ -231,7 +227,7 @@ def main(argv=None):
         equality_functions=equality_fn,
         inequality_functions=inequality_fn,
         objective_functions=objective_fn,
-        optimization_size=(dv_size, u_size, f_size, z_size),
+        optimization_size=(dv_size, u_size, f_size, z_size, g_size, r_size),
     )
     # Create Isolated Update Function:
     update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
@@ -241,7 +237,7 @@ def main(argv=None):
         equality_fn,
         inequality_fn,
         objective_fn,
-        (dv_size, u_size, f_size, z_size),
+        (dv_size, u_size, f_size, z_size, g_size, r_size),
     )
 
     # Set Simulation Parameters:
@@ -324,7 +320,7 @@ def main(argv=None):
         kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 200.0
+        kp_rotation_feet = 50.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         control_gains = [
@@ -393,13 +389,19 @@ def main(argv=None):
         # Yaw Control:
         control_input = np.concatenate(control_input, axis=0)
 
-        base_J, left_foot_J, right_foot_J = np.split(velocity_jacobian, 3)
-        feet_velocity_jacobian = np.concatenate([left_foot_J, right_foot_J], axis=0)
-        constraint_constants = (M, C, tau_g, B, H, H_bias, feet_velocity_jacobian)
-
-        objective_constants = (
+        constraint_constants = (
+            M,
+            C,
+            tau_g,
+            B,
+            H,
+            H_bias,
             velocity_jacobian,
             bias_acceleration,
+            previous_ground_reaction_forces,
+        )
+
+        objective_constants = (
             control_input,
             yaw_state,
             arm_state,
@@ -415,16 +417,20 @@ def main(argv=None):
         assert solution.info.status_val == 1
 
         # Unpack Optimization Solution:
-        accelerations = solution.x[:dv_size]
-        torque = solution.x[dv_size:dv_size + u_size]
-        constraint_force = solution.x[dv_size + u_size:dv_size + u_size + f_size]
-        reaction_force = solution.x[dv_size + u_size + f_size:]
+        accelerations = solution.x[:dv_indx]
+        torque = solution.x[dv_indx:u_indx]
+        constraint_force = solution.x[u_indx:f_indx]
+        reaction_force = solution.x[f_indx:z_indx]
+        task_accelerations = solution.x[z_indx:g_indx]
+        zero_moment = solution.x[g_indx:]
+        previous_ground_reaction_forces = np.reshape(reaction_force, (2, 6))[:, -1]
 
         if i % 500 == 0:
             print(f"Left Leg: {torque[:6]}")
             print(f"Left Arm: {torque[6:10]}")
             print(f"Right Leg: {torque[10:16]}")
             print(f"Right Arm: {torque[16:]}")
+            print(f"Task Accelerations: {task_accelerations}")
             print("---")
 
         # Unpack Optimization Solution:
