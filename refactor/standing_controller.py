@@ -53,8 +53,8 @@ def main(argv=None):
     parser.AddModels(filepath)
 
     # Apply closed loop kinematic constraints:
-    # model_utilities.apply_kinematic_constraints(plant=plant, stiffness=np.inf, damping=0.0)
-    model_utilities.apply_kinematic_constraints(plant=plant, stiffness=1e6, damping=2e8)
+    model_utilities.apply_kinematic_constraints(plant=plant, stiffness=np.inf, damping=0.0)
+    # model_utilities.apply_kinematic_constraints(plant=plant, stiffness=1e6, damping=2e8)
 
     # Add Reflected Inertia:
     model_utilities.add_reflected_inertia(plant=plant)
@@ -252,7 +252,7 @@ def main(argv=None):
     )
 
     # Set Simulation Parameters:
-    end_time = 30.0
+    end_time = 35.0
     current_time = 0.0
 
     context = simulator.get_context()
@@ -326,13 +326,24 @@ def main(argv=None):
         )
 
         # Calculate Desired Control:
-        kp_position_base = 100.0
+        # Static Base Tracking:
+        # kp_position_base = 100.0
+        # kd_position_base = 2 * np.sqrt(kp_position_base)
+        # kp_rotation_base = 150.0
+        # kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
+        # kp_position_feet = 0.0
+        # kd_position_feet = 2 * np.sqrt(kp_position_feet)
+        # kp_rotation_feet = 100.0
+        # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
+
+        # Dynamic Base Tracking:
+        kp_position_base = 10.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
         kp_rotation_base = 150.0
         kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 100.0
+        kp_rotation_feet = 500.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         control_gains = [
@@ -345,8 +356,19 @@ def main(argv=None):
         # Position:
         base_ddx = np.zeros((3,))
         base_dx = np.zeros_like(base_ddx)
-        base_x = np.array([0.04638328773710699, -0.00014100711268926657, 1.0308927292801415])
-        # base_x = np.array([0.04638328773710699, -0.00014100711268926657, 0.8308927292801415])
+        # Static Base Position:
+        # base_x = np.array([0.04638328773710699, -0.00014100711268926657, 1.0308927292801415])
+        # Update Base Position based on average foot position:
+        base_xy = np.mean(
+            np.vstack(
+                [
+                    task_transform[1].translation(),
+                    task_transform[2].translation()
+                ],
+            ),
+            axis=0,
+        )[:-1]
+        base_x = np.array([base_xy[0], base_xy[1], 1.0308927292801415])
         # Rotation:
         base_ddw = np.zeros_like(base_ddx)
         base_dw = np.zeros_like(base_ddw)

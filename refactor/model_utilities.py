@@ -338,7 +338,7 @@ def achilles_rod_constraint():
 
 def add_reflected_inertia(
     plant: MultibodyPlant,
-) -> MultibodyPlant:
+):
     leg_rotor_inertias = np.array([
         61, 61, 365, 365, 4.9, 4.9,
     ]) * 1e-6
@@ -379,5 +379,3 @@ def add_reflected_inertia(
             joint_actuator = plant.GetJointActuatorByName(arm_motor)
             joint_actuator.set_default_rotor_inertia(rotor_inertia)
             joint_actuator.set_default_gear_ratio(gear_ratio)
-
-    return plant
