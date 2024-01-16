@@ -56,6 +56,9 @@ def main(argv=None):
     # model_utilities.apply_kinematic_constraints(plant=plant, stiffness=np.inf, damping=0.0)
     model_utilities.apply_kinematic_constraints(plant=plant, stiffness=1e6, damping=2e8)
 
+    # Add Reflected Inertia:
+    model_utilities.add_reflected_inertia(plant=plant)
+
     # Add Terrain:
     model_utilities.add_terrain(plant=plant, mu_static=0.8, mu_dynamic=0.6)
 

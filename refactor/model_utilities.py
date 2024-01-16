@@ -334,3 +334,50 @@ def achilles_rod_constraint():
     ])
 
     return H
+
+
+def add_reflected_inertia(
+    plant: MultibodyPlant,
+) -> MultibodyPlant:
+    leg_rotor_inertias = np.array([
+        61, 61, 365, 365, 4.9, 4.9,
+    ]) * 1e-6
+    arm_rotor_inertias = np.array([
+        61, 61, 61, 61,
+    ]) * 1e-6
+    leg_gear_ratios = np.array([
+        80, 50, 16, 16, 50, 50,
+    ])
+    arm_gear_ratios = np.array([
+        80, 80, 50, 80,
+    ])
+    left_leg = [
+        "left-hip-roll_motor", "left-hip-yaw_motor", "left-hip-pitch_motor",
+        "left-knee_motor", "left-toe-A_motor", "left-toe-B_motor",
+    ]
+    left_arm = [
+        "left-shoulder-roll_motor", "left-shoulder-pitch_motor",
+        "left-shoulder-yaw_motor", "left-elbow_motor",
+    ]
+    right_leg = [
+        "right-hip-roll_motor", "right-hip-yaw_motor", "right-hip-pitch_motor",
+        "right-knee_motor", "right-toe-A_motor", "right-toe-B_motor",
+    ]
+    right_arm = [
+        "right-shoulder-roll_motor", "right-shoulder-pitch_motor",
+        "right-shoulder-yaw_motor", "right-elbow_motor",
+    ]
+
+    for leg, arm in zip([left_leg, right_leg], [left_arm, right_arm]):
+        leg_iterables = zip(leg, leg_rotor_inertias, leg_gear_ratios)
+        arm_iterables = zip(arm, arm_rotor_inertias, arm_gear_ratios)
+        for leg_motor, rotor_inertia, gear_ratio in leg_iterables:
+            joint_actuator = plant.GetJointActuatorByName(leg_motor)
+            joint_actuator.set_default_rotor_inertia(rotor_inertia)
+            joint_actuator.set_default_gear_ratio(gear_ratio)
+        for arm_motor, rotor_inertia, gear_ratio in arm_iterables:
+            joint_actuator = plant.GetJointActuatorByName(arm_motor)
+            joint_actuator.set_default_rotor_inertia(rotor_inertia)
+            joint_actuator.set_default_gear_ratio(gear_ratio)
+
+    return plant
