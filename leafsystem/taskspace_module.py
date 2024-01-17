@@ -6,23 +6,22 @@ from pydrake.systems.framework import (
     LeafSystem,
     PublishEvent,
     TriggerType,
-    Context,
 )
 from pydrake.multibody.plant import MultibodyPlant
 
 import dynamics_utilities
+from context_utilities import make_context_wrapper_value
 
 
 class TaskSpace(LeafSystem):
     def __init__(
         self,
         plant: MultibodyPlant,
-        plant_context: Context,
     ):
         LeafSystem.__init__(self)
         # Store Plant and Create Context:
         self.plant = plant
-        self.plant_context = plant.CreateDefaultContext()
+        self.plant_context = self.plant.CreateDefaultContext()
 
         # Parameters:
         self.update_rate = 1.0 / 1000.0
@@ -44,6 +43,12 @@ class TaskSpace(LeafSystem):
         self.task_bias_index = self.DeclareAbstractState(
             Value[BasicVector](self.task_bias_size)
         )
+
+        # Input Port: Plant Context
+        self.plant_context_port = self.DeclareAbstractInputPort(
+            "plant_context",
+            make_context_wrapper_value(self.plant),
+        ).get_index()
 
         # Output Port: Task Space Matrices
         self.task_transform_rotation_port = self.DeclareVectorOutputPort(
@@ -132,6 +137,11 @@ class TaskSpace(LeafSystem):
         )
 
     def update(self, context, event):
+        # Update Plant Context:
+        self.plant_context = self.get_input_port(
+            self.plant_context_port,
+        ).Eval(context).context
+
         # Update Task Space Matrices:
         task_transform, task_jacobian, task_bias = dynamics_utilities.calculate_taskspace(
             plant=self.plant,

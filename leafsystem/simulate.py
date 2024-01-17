@@ -17,6 +17,7 @@ import digit_utilities
 
 import controller_module
 import taskspace_module
+import context_utilities
 
 
 def main(argv=None):
@@ -100,7 +101,6 @@ def main(argv=None):
     # Initialize Systems:
     driver_osc_controller = controller_module.OSC(
         plant=plant,
-        plant_context=plant_context,
         digit_idx=digit_idx,
         constraint_frames=constraint_frames,
     )
@@ -108,18 +108,47 @@ def main(argv=None):
 
     driver_pid_controller = controller_module.PID(
         plant=plant,
-        plant_context=plant_context,
         digit_idx=digit_idx,
     )
     pid_controller = builder.AddSystem(driver_pid_controller)
 
     driver_taskspace_projection = taskspace_module.TaskSpace(
         plant=plant,
-        plant_context=plant_context,
     )
     taskspace_projection = builder.AddSystem(driver_taskspace_projection)
 
+    driver_context_system = context_utilities.PlantContextSystem(
+        plant=plant,
+    )
+    context_system = builder.AddSystem(driver_context_system)
+
     # Connect Systems:
+    # Plant -> Context System:
+    builder.Connect(
+        plant.get_state_output_port(),
+        context_system.get_input_port(
+            driver_context_system.plant_state_port.get_index(),
+        ),
+    )
+
+    # Context System -> OSC Controller:
+    builder.Connect(
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        osc_controller.get_input_port(driver_osc_controller.plant_context_port),
+    )
+
+    # Context System -> PID Controller:
+    builder.Connect(
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        pid_controller.get_input_port(driver_pid_controller.plant_context_port),
+    )
+
+    # Context System -> Task Space Projection:
+    builder.Connect(
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        taskspace_projection.get_input_port(driver_taskspace_projection.plant_context_port),
+    )
+
     # OSC Controller -> Plant:
     builder.Connect(
         osc_controller.get_output_port(driver_osc_controller.torque_port),

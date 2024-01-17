@@ -8,13 +8,14 @@ from pydrake.systems.framework import (
     LeafSystem,
     PublishEvent,
     TriggerType,
-    Context,
 )
 from pydrake.multibody.plant import MultibodyPlant
 
 import dynamics_utilities
 import optimization_utilities
 import model_utilities
+
+from context_utilities import make_context_wrapper_value
 from digit_utilities import DigitUtilities
 
 
@@ -22,7 +23,6 @@ class OSC(LeafSystem):
     def __init__(
         self,
         plant: MultibodyPlant,
-        plant_context: Context,
         digit_idx: DigitUtilities,
         constraint_frames: list
     ):
@@ -30,7 +30,7 @@ class OSC(LeafSystem):
 
         # Store Plant and Create Context:
         self.plant = plant
-        self.plant_context = plant_context
+        self.plant_context = self.plant.CreateDefaultContext()
 
         # Digit Convinience Functions:
         self.digit_idx = digit_idx
@@ -69,6 +69,12 @@ class OSC(LeafSystem):
         ).get_index()
         self.desired_ddx_port = self.DeclareVectorInputPort(
             "desired_ddx", 18,
+        ).get_index()
+
+        # Input Port: Plant Context
+        self.plant_context_port = self.DeclareAbstractInputPort(
+            "plant_context",
+            make_context_wrapper_value(self.plant),
         ).get_index()
 
         # Output Port: OSC Torque Solution
@@ -219,6 +225,11 @@ class OSC(LeafSystem):
         )
 
     def update(self, context, event):
+        # Update Plant Context:
+        self.plant_context = self.get_input_port(
+            self.plant_context_port,
+        ).Eval(context).context
+
         # Get Input Ports: Task Space Matrices and Desired Acceleration
         task_jacobian = self.get_input_port(
             self.task_jacobian_port,
@@ -348,13 +359,12 @@ class PID(LeafSystem):
     def __init__(
         self,
         plant: MultibodyPlant,
-        plant_context: Context,
         digit_idx: DigitUtilities,
     ):
         LeafSystem.__init__(self)
         # Store Plant and Create Context:
         self.plant = plant
-        self.plant_context = plant_context
+        self.plant_context = self.plant.CreateDefaultContext()
 
         # Digit Convinience Functions:
         self.digit_idx = digit_idx
@@ -368,8 +378,6 @@ class PID(LeafSystem):
             Value[BasicVector](self.control_input_size)
         )
 
-        # Input States:
-
         # Input Port: Task Space Matrices
         self.task_jacobian_port = self.DeclareVectorInputPort(
             "task_jacobian", 612,
@@ -379,6 +387,12 @@ class PID(LeafSystem):
         ).get_index()
         self.task_transform_translation_port = self.DeclareVectorInputPort(
             "task_transform_translation", 9,
+        ).get_index()
+
+        # Input Port: Plant Context
+        self.plant_context_port = self.DeclareAbstractInputPort(
+            "plant_context",
+            make_context_wrapper_value(self.plant),
         ).get_index()
 
         # Output Port: Control Input
@@ -426,6 +440,11 @@ class PID(LeafSystem):
         output.SetFromVector(control_input)
 
     def update(self, context, event):
+        # Update Plant Context:
+        self.plant_context = self.get_input_port(
+            self.plant_context_port,
+        ).Eval(context).context
+
         # Get Input Ports: Task Space Matrices
         task_jacobian = self.get_input_port(
             self.task_jacobian_port,
@@ -456,23 +475,23 @@ class PID(LeafSystem):
 
         # Calculate Desired Control:
         # Static Base Tracking:
-        # kp_position_base = 100.0
+        # kp_position_base = 25.0
         # kd_position_base = 2 * np.sqrt(kp_position_base)
-        # kp_rotation_base = 150.0
+        # kp_rotation_base = 50.0
         # kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         # kp_position_feet = 0.0
         # kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        # kp_rotation_feet = 100.0
+        # kp_rotation_feet = 150.0
         # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Dynamic Base Tracking:
         kp_position_base = 10.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 150.0
+        kp_rotation_base = 100.0
         kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 500.0
+        kp_rotation_feet = 350.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         control_gains = [

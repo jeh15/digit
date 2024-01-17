@@ -2,28 +2,29 @@ import os
 from absl import app
 
 import numpy as np
-import osqp
-from pydrake.common.eigen_geometry import Quaternion
 from pydrake.geometry import (
     MeshcatVisualizer,
     Meshcat,
 )
 from pydrake.multibody.parsing import Parser
-from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContactSolver
+from pydrake.multibody.plant import (
+    AddMultibodyPlantSceneGraph,
+    DiscreteContactSolver,
+)
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
-from pydrake.systems.primitives import ConstantVectorSource
 
-# Custom Imports:
-import dynamics_utilities
+# Utility Imports:
 import model_utilities
 import digit_utilities
-import optimization_utilities
 
+# LeafSystem Imports:
+import controller_module
+import taskspace_module
+import agility_module
+
+# Digit API:
 import digit_api
-
-
-np.set_printoptions(precision=3)
 
 
 def main(argv=None):
@@ -44,7 +45,6 @@ def main(argv=None):
 
     builder = DiagramBuilder()
     time_step = 0.0005
-    dt = 0.001
     plant, scene_graph = AddMultibodyPlantSceneGraph(
         builder,
         time_step=time_step,
@@ -56,8 +56,10 @@ def main(argv=None):
     parser.AddModels(filepath)
 
     # Apply closed loop kinematic constraints:
-    # model_utilities.apply_kinematic_constraints(plant=plant, stiffness=np.inf, damping=0.0)
-    model_utilities.apply_kinematic_constraints(plant=plant, stiffness=1e6, damping=2e8)
+    model_utilities.apply_kinematic_constraints(plant=plant, stiffness=np.inf, damping=0.0)
+
+    # Add Reflected Inertia:
+    model_utilities.add_reflected_inertia(plant=plant)
 
     # Add Terrain:
     model_utilities.add_terrain(plant=plant, mu_static=0.8, mu_dynamic=0.6)
@@ -91,21 +93,101 @@ def main(argv=None):
         ]
     )
 
-    plant.SetDefaultPositions(
+    # Set Default State:
+    default_velocity = np.zeros((plant.num_velocities(),))
+    plant.SetPositions(
+        context=plant_context,
         q=default_position,
     )
-
-    # Connect Vector Source to Digit's Actuators:
-    actuation_vector = np.zeros(
-        plant.num_actuators(),
-        dtype=np.float64,
+    plant.SetVelocities(
+        context=plant_context,
+        v=default_velocity,
     )
-    actuation_source = builder.AddSystem(
-        ConstantVectorSource(actuation_vector),
+
+    # Initialize Systems:
+    driver_osc_controller = controller_module.OSC(
+        plant=plant,
+        digit_idx=digit_idx,
+        constraint_frames=constraint_frames,
+    )
+    osc_controller = builder.AddSystem(driver_osc_controller)
+
+    driver_pid_controller = controller_module.PID(
+        plant=plant,
+        digit_idx=digit_idx,
+    )
+    pid_controller = builder.AddSystem(driver_pid_controller)
+
+    driver_taskspace_projection = taskspace_module.TaskSpace(
+        plant=plant,
+    )
+    taskspace_projection = builder.AddSystem(driver_taskspace_projection)
+
+    driver_context_system = agility_module.AgilityContextSystem(
+        plant=plant,
+        digit_idx=digit_idx,
+    )
+    context_system = builder.AddSystem(driver_context_system)
+
+    driver_agility_publisher = agility_module.AgilityPublisher(
+        plant=plant,
+        digit_idx=digit_idx,
+    )
+    agility_publisher = builder.AddSystem(driver_agility_publisher)
+
+    # Connect Systems:
+    # Context System -> OSC Controller:
+    builder.Connect(
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        osc_controller.get_input_port(driver_osc_controller.plant_context_port),
+    )
+
+    # Context System -> PID Controller:
+    builder.Connect(
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        pid_controller.get_input_port(driver_pid_controller.plant_context_port),
+    )
+
+    # Context System -> Task Space Projection:
+    builder.Connect(
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        taskspace_projection.get_input_port(driver_taskspace_projection.plant_context_port),
+    )
+
+    # OSC Controller -> Agility Publisher:
+    builder.Connect(
+        osc_controller.get_output_port(driver_osc_controller.torque_port),
+        agility_publisher.get_input_port(driver_agility_publisher.torque_port),
+    )
+
+    # PID Controller -> OSC Controller:
+    builder.Connect(
+        pid_controller.get_output_port(driver_pid_controller.control_port),
+        osc_controller.get_input_port(driver_osc_controller.desired_ddx_port),
+    )
+
+    # Task Space Projection -> PID Controller:
+    builder.Connect(
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_jacobian_port),
+        pid_controller.get_input_port(driver_pid_controller.task_jacobian_port),
     )
     builder.Connect(
-        actuation_source.get_output_port(),
-        plant.get_actuation_input_port(),
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_transform_rotation_port),
+        pid_controller.get_input_port(driver_pid_controller.task_transform_rotation_port),
+    )
+    builder.Connect(
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_transform_translation_port),
+        pid_controller.get_input_port(driver_pid_controller.task_transform_translation_port),
+    )
+
+    # Task Space Projection -> OSC Controller:
+    builder.Connect(
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_jacobian_port),
+        osc_controller.get_input_port(driver_osc_controller.task_jacobian_port),
+    )
+    builder.Connect(
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_bias_port),
+        osc_controller.get_input_port(driver_osc_controller.task_bias_port),
     )
 
     # Add Meshcat Visualizer:
@@ -124,10 +206,10 @@ def main(argv=None):
     # Create simulator:
     simulator = Simulator(diagram)
     simulator.set_target_realtime_rate(1.0)
-    simulator.Initialize()
 
-    # Set Default State:
-    default_velocity = np.zeros((plant.num_velocities(),))
+    context = simulator.get_context()
+    plant_context = plant.GetMyContextFromRoot(context)
+
     plant.SetPositions(
         context=plant_context,
         q=default_position,
@@ -137,134 +219,7 @@ def main(argv=None):
         v=default_velocity,
     )
 
-    # Setup Optimization:
-    q = plant.GetPositions(plant_context)
-    qd = plant.GetVelocities(plant_context)
-
-    M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
-        plant=plant,
-        context=plant_context,
-        q=q,
-        qd=qd,
-    )
-
-    task_transform, task_jacobian, task_bias = dynamics_utilities.calculate_taskspace(
-        plant=plant,
-        context=plant_context,
-        body_name=[
-            "base_link",
-            "left-foot_link",
-            "right-foot_link",
-        ],
-        base_body_name="world",
-        q=q,
-        qd=qd,
-    )
-
-    H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
-        plant=plant,
-        context=plant_context,
-        constraint_frames=constraint_frames,
-        q=q,
-        qd=qd,
-    )
-    H = np.concatenate(
-        [model_utilities.achilles_rod_constraint(), H],
-        axis=0,
-    )
-    H_bias = np.concatenate(
-        [
-            np.zeros(
-                (model_utilities.achilles_rod_constraint().shape[0],)
-            ),
-            H_bias,
-        ],
-        axis=0,
-    )
-
-    arm_state = np.vstack(
-            [
-                [q[digit_idx.actuated_joints_idx["left_arm"]+1]],
-                [qd[digit_idx.actuated_joints_idx["left_arm"]]],
-                [q[digit_idx.actuated_joints_idx["right_arm"]+1]],
-                [qd[digit_idx.actuated_joints_idx["right_arm"]]],
-            ]
-        )
-
-    # Translation Representation:
-    dv_size, u_size, f_size, z_size = plant.num_velocities(), plant.num_actuators(), 6, 12
-    optimization_size = (dv_size, u_size, f_size, z_size)
-    dv_indx = dv_size
-    u_indx = u_size + dv_indx
-    f_indx = f_size + u_indx
-
-    B = digit_idx.control_matrix
-
-    # Base acceleration is already task space:
-    ddx_desired = np.zeros(
-        (task_jacobian.shape[0],)
-    )
-
-    weight = plant.CalcTotalMass(context=plant_context) * 9.81
-    previous_ground_reaction_forces = np.array([weight/2, weight/2])
-    constraint_constants = (
-        M,
-        C,
-        tau_g,
-        B,
-        H,
-        H_bias,
-        previous_ground_reaction_forces,
-    )
-
-    objective_constants = (
-        task_jacobian,
-        task_bias,
-        ddx_desired,
-        arm_state,
-    )
-
-    # Initialize Solver:
-    program = osqp.OSQP()
-    equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
-        optimization_size=optimization_size,
-        dt=dt,
-    )
-
-    program = optimization_utilities.initialize_program(
-        constraint_constants=constraint_constants,
-        objective_constants=objective_constants,
-        program=program,
-        equality_functions=equality_fn,
-        inequality_functions=inequality_fn,
-        objective_functions=objective_fn,
-        optimization_size=optimization_size,
-    )
-    # Create Isolated Update Function:
-    update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
-        constraint_constants,
-        objective_constants,
-        program,
-        equality_fn,
-        inequality_fn,
-        objective_fn,
-        optimization_size,
-    )
-
-    # Set Simulation Parameters:
-    end_time = 30.0
-    current_time = 0.0
-
-    context = simulator.get_context()
-    plant_context = plant.GetMyContextFromRoot(context)
-
-    # Initialize Time:
-    target_time = context.get_time() + dt
-    current_time = context.get_time()
-
-    i = 0
-
-    # Initialize Digit Communication:
+    # Initialize Digit Communication before Simulator Initialization:
     digit_api.initialize_communication(
         "127.0.0.1",
         25501,
@@ -273,228 +228,11 @@ def main(argv=None):
 
     digit_api.wait_for_connection()
 
-    # Run Simulation:
-    while current_time < end_time:
-        # Advance simulation:
-        simulator.AdvanceTo(target_time)
+    simulator.Initialize()
 
-        # Get current context:
-        context = simulator.get_context()
-        plant_context = plant.GetMyContextFromRoot(context)
-
-        # Get observations from Digit API:
-        motor_position = digit_api.get_actuated_joint_position()
-        motor_velocity = digit_api.get_actuated_joint_velocity()
-        motor_torque = digit_api.get_actuated_joint_torque()
-        joint_position = digit_api.get_unactuated_joint_position()
-        joint_velocity = digit_api.get_unactuated_joint_velocity()
-
-        q = digit_idx.joint_map(motor_position, joint_position)
-        qd = digit_idx.joint_map(motor_velocity, joint_velocity)
-
-        plant.SetPositions(plant_context, q)
-        plant.SetVelocities(plant_context, qd)
-
-        M, C, tau_g, plant, plant_context = dynamics_utilities.get_dynamics(
-            plant=plant,
-            context=plant_context,
-            q=q,
-            qd=qd,
-        )
-
-        task_transform, task_jacobian, task_bias = dynamics_utilities.calculate_taskspace(
-            plant=plant,
-            context=plant_context,
-            body_name=[
-                "base_link",
-                "left-foot_link",
-                "right-foot_link",
-            ],
-            base_body_name="world",
-            q=q,
-            qd=qd,
-        )
-
-        H, H_bias = dynamics_utilities.calculate_kinematic_constraints(
-            plant=plant,
-            context=plant_context,
-            constraint_frames=constraint_frames,
-            q=q,
-            qd=qd,
-        )
-        H = np.concatenate(
-            [model_utilities.achilles_rod_constraint(), H],
-            axis=0,
-        )
-        H_bias = np.concatenate(
-            [
-                np.zeros(
-                    (model_utilities.achilles_rod_constraint().shape[0],)
-                ),
-                H_bias,
-            ],
-            axis=0,
-        )
-
-        arm_state = np.vstack(
-            [
-                [q[digit_idx.actuated_joints_idx["left_arm"]+1]],
-                [qd[digit_idx.actuated_joints_idx["left_arm"]]],
-                [q[digit_idx.actuated_joints_idx["right_arm"]+1]],
-                [qd[digit_idx.actuated_joints_idx["right_arm"]]],
-            ]
-        )
-
-        # Calculate Desired Control:
-        kp_position_base = 100.0
-        kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 150.0
-        kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
-        kp_position_feet = 0.0
-        kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 100.0
-        kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
-
-        control_gains = [
-            [kp_position_base, kd_position_base, kp_rotation_base, kd_rotation_base],
-            [kp_position_feet, kd_position_feet, kp_rotation_feet, kd_rotation_feet],
-            [kp_position_feet, kd_position_feet, kp_rotation_feet, kd_rotation_feet],
-        ]
-
-        # Base Tracking:
-        # Position:
-        base_ddx = np.zeros((3,))
-        base_dx = np.zeros_like(base_ddx)
-        base_x = np.array([0.04638328773710699, -0.00014100711268926657, 1.0308927292801415])
-        # base_x = np.array([0.04638328773710699, -0.00014100711268926657, 0.8308927292801415])
-        # Rotation:
-        base_ddw = np.zeros_like(base_ddx)
-        base_dw = np.zeros_like(base_ddw)
-        base_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-        # Foot Tracking:
-        # Position:
-        foot_ddx = np.zeros_like(base_ddx)
-        foot_dx = np.zeros_like(foot_ddx)
-        left_foot_x = np.array([0.009485657750110333, 0.10003118944491024, -0.0006031847782857091])
-        right_foot_x = np.array([0.009501654135451067, -0.10004060651147584, -0.0006041746580776665])
-        # Rotation:
-        foot_ddw = np.zeros_like(base_ddx)
-        foot_dw = np.zeros_like(foot_ddw)
-        left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-        right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-        position_target = [
-            [base_ddx, base_dx, base_x],
-            [foot_ddx, foot_dx, left_foot_x],
-            [foot_ddx, foot_dx, right_foot_x],
-        ]
-        rotation_target = [
-            [base_ddw, base_dw, base_w],
-            [foot_ddw, foot_dw, left_foot_w],
-            [foot_ddw, foot_dw, right_foot_w],
-        ]
-        task_J = np.split(task_jacobian, 3)
-
-        loop_iterables = zip(
-            task_transform,
-            task_J,
-            position_target,
-            rotation_target,
-            control_gains,
-        )
-
-        # Calculate Desired Control:
-        control_input = []
-        for transform, J, x_target, w_target, gains in loop_iterables:
-            task_position = transform.translation()
-            task_rotation = transform.rotation().ToQuaternion()
-            task_velocity = J @ qd
-            target_rotation = Quaternion(w_target[2])
-            # From Ickes, B. P. (1970): For control purposes the last three elements of the quaternion define the roll, pitch, and yaw rotational errors.
-            rotation_error = target_rotation.multiply(task_rotation.conjugate()).xyz()
-            position_control = x_target[0] + gains[1] * (x_target[1] - task_velocity[3:]) + gains[0] * (x_target[2] - task_position)
-            rotation_control = w_target[0] + gains[2] * (w_target[1] - task_velocity[:3]) + gains[3] * (rotation_error)
-            control_input.append(
-                np.concatenate([rotation_control, position_control])
-            )
-
-        # Desired Control:
-        ddx_desired = np.concatenate(control_input, axis=0)
-
-        constraint_constants = (
-            M,
-            C,
-            tau_g,
-            B,
-            H,
-            H_bias,
-            previous_ground_reaction_forces,
-        )
-
-        objective_constants = (
-            task_jacobian,
-            task_bias,
-            ddx_desired,
-            arm_state,
-        )
-
-        # Solve Optimization:
-        solution, program = update_optimization(
-            constraint_constants=constraint_constants,
-            objective_constants=objective_constants,
-            program=program,
-        )
-
-        assert solution.info.status_val == 1
-
-        # Unpack Optimization Solution:
-        accelerations = solution.x[:dv_indx]
-        torque = solution.x[dv_indx:u_indx]
-        constraint_force = solution.x[u_indx:f_indx]
-        reaction_force = solution.x[f_indx:]
-        task_accelerations = task_jacobian @ accelerations + task_bias
-        reaction_force = np.reshape(reaction_force, (2, 6))
-        zero_moment_distance = np.array([
-            reaction_force[0, 0] / previous_ground_reaction_forces[0],
-            reaction_force[0, 1] / previous_ground_reaction_forces[0],
-            reaction_force[1, 0] / previous_ground_reaction_forces[1],
-            reaction_force[1, 1] / previous_ground_reaction_forces[1],
-        ])
-        previous_ground_reaction_forces = reaction_force[:, -1]
-
-        if i % 500 == 0:
-            print(f"Left Leg: {torque[:6]}")
-            # print(f"Left Arm: {torque[6:10]}")
-            print(f"Right Leg: {torque[10:16]}")
-            # print(f"Right Arm: {torque[16:]}")
-            print(f"Reaction Forces: {reaction_force}")
-            print(f"Task Accelerations: {task_accelerations}")
-            print(f"Zero Moment Distance: {zero_moment_distance}")
-            print(f"Time: {current_time}")
-            print("---")
-
-        # Unpack Optimization Solution:
-        # conxtext = simulator.get_context()
-        # actuation_context = actuation_source.GetMyContextFromRoot(conxtext)
-        # actuation_vector = torque
-        # mutable_actuation_vector = actuation_source.get_mutable_source_value(
-        #     actuation_context,
-        # )
-        # mutable_actuation_vector.set_value(actuation_vector)
-
-        # Send command:
-        torque_command = digit_idx.actuation_map(torque)
-        velocity_command = np.zeros((u_size,))
-        damping_command = 0.75 * np.ones((u_size,))
-        command = np.array([torque_command, velocity_command, damping_command]).T
-        digit_api.send_command(command, 0, True)
-
-        # Get current time and set target time:
-        current_time = context.get_time()
-        target_time = current_time + dt
-
-        i += 1
+    # Advance simulation:
+    target_time = 35.0
+    simulator.AdvanceTo(target_time)
 
 
 if __name__ == "__main__":
