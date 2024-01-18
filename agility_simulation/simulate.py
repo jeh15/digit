@@ -7,16 +7,9 @@ from pydrake.geometry import (
     Meshcat,
 )
 from pydrake.multibody.parsing import Parser
-from pydrake.multibody.plant import (
-    AddMultibodyPlantSceneGraph,
-    DiscreteContactSolver,
-)
+from pydrake.multibody.plant import AddMultibodyPlantSceneGraph, DiscreteContactSolver
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
-from pydrake.visualization import (
-    ApplyVisualizationConfig,
-    VisualizationConfig,
-)
 
 # Custom Imports:
 import model_utilities
@@ -45,6 +38,7 @@ def main(argv=None):
 
     builder = DiagramBuilder()
     time_step = 0.0005
+    dt = 0.001
     plant, scene_graph = AddMultibodyPlantSceneGraph(
         builder,
         time_step=time_step,
@@ -76,13 +70,6 @@ def main(argv=None):
     # Finalize:
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
-
-    config = VisualizationConfig()
-    config.publish_contacts = True
-    ApplyVisualizationConfig(
-        config=config,
-        builder=builder,
-    )
 
     # Set Default Position:
     default_position = np.array(
