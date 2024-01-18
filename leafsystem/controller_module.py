@@ -372,6 +372,9 @@ class PID(LeafSystem):
         # Parameters:
         self.update_rate = 1.0 / 1000.0
 
+        # Poor Mans Timer:
+        self.index = 0.0
+
         # Abstract States: Control Input
         self.control_input_size = np.zeros(18)
         self.control_input_index = self.DeclareAbstractState(
@@ -475,23 +478,23 @@ class PID(LeafSystem):
 
         # Calculate Desired Control:
         # Static Base Tracking:
-        # kp_position_base = 25.0
+        # kp_position_base = 200.0
         # kd_position_base = 2 * np.sqrt(kp_position_base)
-        # kp_rotation_base = 50.0
+        # kp_rotation_base = 200.0
         # kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
         # kp_position_feet = 0.0
         # kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        # kp_rotation_feet = 150.0
+        # kp_rotation_feet = 100.0
         # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Dynamic Base Tracking:
-        kp_position_base = 10.0
+        kp_position_base = 200.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 100.0
-        kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
+        kp_rotation_base = 500.0
+        kd_rotation_base = 75 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 350.0
+        kp_rotation_feet = 100.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         control_gains = [
@@ -519,11 +522,36 @@ class PID(LeafSystem):
             ),
             axis=0,
         )[:-1]
-        base_x = np.array([base_xy[0], base_xy[1], 1.0308927292801415])
+        moving_z = 0.8 + 0.2 * np.sin(self.index / 1000.0)
+        base_x = np.array([0.04638328773710699, -0.00014100711268926657, moving_z])
+        # base_x = np.array([base_xy[0], base_xy[1], moving_z])
         # Rotation:
-        base_ddw = np.zeros_like(base_ddx)
-        base_dw = np.zeros_like(base_ddw)
-        base_w = np.array([1.0, 0.0, 0.0, 0.0])
+        # base_ddw = np.zeros_like(base_ddx)
+        # base_dw = np.zeros_like(base_ddw)
+        # base_w = np.array([1.0, 0.0, 0.0, 0.0])
+
+        # Bang Bang:
+        # if self.index % 20000 == 0:
+        #     self.index = 0
+
+        # if self.index <= 10000:
+        #     theta = np.pi / 4.0
+        # else:
+        #     theta = -np.pi / 4.0
+        # base_w = np.array([np.cos(theta / 2), 0.0, 0.0, np.sin(theta / 2)])
+
+        # Position and Velocity Tracking:
+        amplitude_scale = 0.1
+        frequency_scale = 2000.0
+        theta = amplitude_scale * np.sin(self.index / frequency_scale)
+        dtheta = amplitude_scale / frequency_scale * np.cos(self.index / frequency_scale)
+        ddtheta = -amplitude_scale / frequency_scale**2 * np.sin(self.index / frequency_scale)
+        base_w = np.array([1.0, 0.0, 0.0, theta])
+        base_w = base_w / np.linalg.norm(base_w)
+        base_dw = np.array([0.0, 0.0, dtheta])
+        base_ddw = np.array([0.0, 0.0, ddtheta])
+
+        self.index += 1
 
         # Foot Tracking:
         # Position:

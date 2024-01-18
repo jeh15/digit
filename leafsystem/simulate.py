@@ -11,11 +11,13 @@ from pydrake.multibody.plant import (
     AddMultibodyPlantSceneGraph,
     DiscreteContactSolver,
 )
+from pydrake.multibody.meshcat import ContactVisualizer
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.visualization import (
     ApplyVisualizationConfig,
     VisualizationConfig,
+    AddFrameTriadIllustration,
 )
 
 # Custom Imports:
@@ -32,7 +34,7 @@ def main(argv=None):
     digit_idx = digit_utilities.DigitUtilities(floating_base=True)
 
     # Load URDF file:
-    urdf_path = "models/digit.urdf"
+    urdf_path = "models/digit_contact.urdf"
     filepath = os.path.join(
         os.path.dirname(
             os.path.dirname(__file__),
@@ -77,12 +79,13 @@ def main(argv=None):
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
 
-    config = VisualizationConfig()
-    config.publish_contacts = True
-    ApplyVisualizationConfig(
-        config=config,
-        builder=builder,
-    )
+    # config = VisualizationConfig()
+    # config.publish_contacts = True
+    # ApplyVisualizationConfig(
+    #     config=config,
+    #     builder=builder,
+    #     scene_graph=scene_graph,
+    # )
 
     # Set Default Position:
     default_position = np.array(
@@ -207,6 +210,30 @@ def main(argv=None):
         scene_graph=scene_graph,
         meshcat=meshcat,
     )
+
+    # Contact Visualizer:
+    # contact_visualizer = ContactVisualizer(
+    #     meshcat,
+    # )
+    # contact_visualizer.AddToBuilder(
+    #     builder=builder,
+    #     plant=plant,
+    #     meshcat=meshcat,
+    # )
+
+    # Frame Triad Visualizer:
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("base_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("left-foot_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("right-foot_link"),
+    # )
 
     # Build diagram:
     diagram = builder.Build()

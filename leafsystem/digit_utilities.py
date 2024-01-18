@@ -153,9 +153,9 @@ class DigitUtilities():
             }
 
             # Control Input Mapping:
-            # gain_1 = 1.0 / 2.0
-            # gain_2 = 1.0 / (1.0 * 50.0)
-            # gain_3 = 1.0 / (3.0 * 50.0)
+            # gain_1 = 1.0
+            # gain_2 = 1.0
+            # gain_3 = 1.0 / 3.0
             gain_1 = 1.0 / 2.0
             gain_2 = 1.0 / (1.0 * 50.0)
             gain_3 = 1.0 / (3.0 * 50.0)
