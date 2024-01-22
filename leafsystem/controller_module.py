@@ -491,7 +491,7 @@ class PID(LeafSystem):
         kp_position_base = 200.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
         kp_rotation_base = 500.0
-        kd_rotation_base = 75 * np.sqrt(kp_rotation_base)
+        kd_rotation_base = 200 * np.sqrt(kp_rotation_base)
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
         kp_rotation_feet = 100.0
@@ -541,7 +541,7 @@ class PID(LeafSystem):
         # base_w = np.array([np.cos(theta / 2), 0.0, 0.0, np.sin(theta / 2)])
 
         # Position and Velocity Tracking:
-        amplitude_scale = 0.1
+        amplitude_scale = 0.3
         frequency_scale = 2000.0
         theta = amplitude_scale * np.sin(self.index / frequency_scale)
         dtheta = amplitude_scale / frequency_scale * np.cos(self.index / frequency_scale)

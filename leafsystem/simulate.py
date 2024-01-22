@@ -15,8 +15,6 @@ from pydrake.multibody.meshcat import ContactVisualizer
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
 from pydrake.visualization import (
-    ApplyVisualizationConfig,
-    VisualizationConfig,
     AddFrameTriadIllustration,
 )
 
@@ -212,28 +210,28 @@ def main(argv=None):
     )
 
     # Contact Visualizer:
-    # contact_visualizer = ContactVisualizer(
-    #     meshcat,
-    # )
-    # contact_visualizer.AddToBuilder(
-    #     builder=builder,
-    #     plant=plant,
-    #     meshcat=meshcat,
-    # )
+    contact_visualizer = ContactVisualizer(
+        meshcat,
+    )
+    contact_visualizer.AddToBuilder(
+        builder=builder,
+        plant=plant,
+        meshcat=meshcat,
+    )
 
     # Frame Triad Visualizer:
-    # AddFrameTriadIllustration(
-    #     scene_graph=scene_graph,
-    #     body=plant.GetBodyByName("base_link"),
-    # )
-    # AddFrameTriadIllustration(
-    #     scene_graph=scene_graph,
-    #     body=plant.GetBodyByName("left-foot_link"),
-    # )
-    # AddFrameTriadIllustration(
-    #     scene_graph=scene_graph,
-    #     body=plant.GetBodyByName("right-foot_link"),
-    # )
+    AddFrameTriadIllustration(
+        scene_graph=scene_graph,
+        body=plant.GetBodyByName("base_link"),
+    )
+    AddFrameTriadIllustration(
+        scene_graph=scene_graph,
+        body=plant.GetBodyByName("left-foot_link"),
+    )
+    AddFrameTriadIllustration(
+        scene_graph=scene_graph,
+        body=plant.GetBodyByName("right-foot_link"),
+    )
 
     # Build diagram:
     diagram = builder.Build()
