@@ -62,13 +62,13 @@ class OSC(LeafSystem):
 
         # Input Port: Task Space Matrices and Desired Acceleration
         self.task_jacobian_port = self.DeclareVectorInputPort(
-            "task_jacobian", 612,
+            "task_jacobian", 1428,
         ).get_index()
         self.task_bias_port = self.DeclareVectorInputPort(
-            "task_bias", 18,
+            "task_bias", 42,
         ).get_index()
         self.desired_ddx_port = self.DeclareVectorInputPort(
-            "desired_ddx", 18,
+            "desired_ddx", 42,
         ).get_index()
 
         # Input Port: Plant Context
@@ -131,14 +131,12 @@ class OSC(LeafSystem):
         )
 
         # Calculate Dynamics:
-        q = self.plant.GetPositions(self.plant_context)
-        qd = self.plant.GetVelocities(self.plant_context)
-
         dynamics_terms = self.calculate_dynamics(
             plant_context=self.plant_context,
         )
         M, C, tau_g, H, H_bias = dynamics_terms
 
+        # TODO(jeh15): Take this out of the initialize function:
         task_transform, task_jacobian, task_bias = dynamics_utilities.calculate_taskspace(
             plant=self.plant,
             context=self.plant_context,
@@ -146,17 +144,12 @@ class OSC(LeafSystem):
                 "base_link",
                 "left-foot_link",
                 "right-foot_link",
+                "left-hand_link",
+                "right-hand_link",
+                "left-elbow_link",
+                "right-elbow_link",
             ],
             base_body_name="world",
-        )
-
-        arm_state = np.vstack(
-            [
-                [q[self.digit_idx.actuated_joints_idx["left_arm"]+1]],
-                [qd[self.digit_idx.actuated_joints_idx["left_arm"]]],
-                [q[self.digit_idx.actuated_joints_idx["right_arm"]+1]],
-                [qd[self.digit_idx.actuated_joints_idx["right_arm"]]],
-            ]
         )
 
         ddx_desired = np.zeros(
@@ -193,7 +186,6 @@ class OSC(LeafSystem):
             task_jacobian,
             task_bias,
             ddx_desired,
-            arm_state,
         )
 
         # Initialize Solver and Optimization:
@@ -244,7 +236,7 @@ class OSC(LeafSystem):
         # Reshape Matrices:
         task_jacobian = np.reshape(
             np.asarray(task_jacobian),
-            (18, 34),
+            (-1, 34),
         )
         task_bias = np.asarray(task_bias)
         ddx_desired = np.asarray(ddx_desired)
@@ -254,18 +246,6 @@ class OSC(LeafSystem):
             plant_context=self.plant_context,
         )
         M, C, tau_g, H, H_bias = dynamics_terms
-
-        # Get Current Arm State:
-        q = self.plant.GetPositions(self.plant_context)
-        qd = self.plant.GetVelocities(self.plant_context)
-        arm_state = np.vstack(
-            [
-                [q[self.digit_idx.actuated_joints_idx["left_arm"]+1]],
-                [qd[self.digit_idx.actuated_joints_idx["left_arm"]]],
-                [q[self.digit_idx.actuated_joints_idx["right_arm"]+1]],
-                [qd[self.digit_idx.actuated_joints_idx["right_arm"]]],
-            ]
-        )
 
         # Get Previous Ground Reaction Forces:
         abstract_state = context.get_mutable_abstract_state(
@@ -290,7 +270,6 @@ class OSC(LeafSystem):
             task_jacobian,
             task_bias,
             ddx_desired,
-            arm_state,
         )
 
         solution, self.program = self.update_optimization(
@@ -376,20 +355,20 @@ class PID(LeafSystem):
         self.index = 0.0
 
         # Abstract States: Control Input
-        self.control_input_size = np.zeros(18)
+        self.control_input_size = np.zeros(42)
         self.control_input_index = self.DeclareAbstractState(
             Value[BasicVector](self.control_input_size)
         )
 
         # Input Port: Task Space Matrices
         self.task_jacobian_port = self.DeclareVectorInputPort(
-            "task_jacobian", 612,
+            "task_jacobian", 1428,
         ).get_index()
         self.task_transform_rotation_port = self.DeclareVectorInputPort(
-            "task_transform_rotation", 12,
+            "task_transform_rotation", 28,
         ).get_index()
         self.task_transform_translation_port = self.DeclareVectorInputPort(
-            "task_transform_translation", 9,
+            "task_transform_translation", 21,
         ).get_index()
 
         # Input Port: Plant Context
@@ -462,15 +441,15 @@ class PID(LeafSystem):
         # Reshape Matrices:
         task_jacobian = np.reshape(
             np.asarray(task_jacobian),
-            (18, 34),
+            (-1, 34),
         )
         task_transform_rotation = np.reshape(
             np.asarray(task_transform_rotation),
-            (3, 4),
+            (-1, 4),
         )
         task_transform_translation = np.reshape(
             np.asarray(task_transform_translation),
-            (3, 3),
+            (-1, 3),
         )
 
         # Get Plant States:
@@ -487,15 +466,31 @@ class PID(LeafSystem):
         # kp_rotation_feet = 100.0
         # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
-        # Dynamic Base Tracking:
+        # Base Tracking:
         kp_position_base = 200.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
         kp_rotation_base = 500.0
         kd_rotation_base = 200 * np.sqrt(kp_rotation_base)
+        # kp_rotation_base = 150.0
+        # kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
+
+        # Feet Tracking:
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
         kp_rotation_feet = 100.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
+
+        # Hand Tracking:
+        kp_position_hands = 100.0
+        kd_position_hands = 2 * np.sqrt(kp_position_hands)
+        kp_rotation_hands = 0.0
+        kd_rotation_hands = 2 * np.sqrt(kp_rotation_hands)
+
+        # Elbow Tracking:
+        kp_position_elbows = 100.0
+        kd_position_elbows = 2 * np.sqrt(kp_position_elbows)
+        kp_rotation_elbows = 0.0
+        kd_rotation_elbows = 2 * np.sqrt(kp_rotation_elbows)
 
         control_gains = [
             [kp_position_base, kd_position_base,
@@ -504,80 +499,99 @@ class PID(LeafSystem):
              kp_rotation_feet, kd_rotation_feet],
             [kp_position_feet, kd_position_feet,
              kp_rotation_feet, kd_rotation_feet],
+            [kp_position_hands, kd_position_hands,
+             kp_rotation_hands, kd_rotation_hands],
+            [kp_position_hands, kd_position_hands,
+             kp_rotation_hands, kd_rotation_hands],
+            [kp_position_elbows, kd_position_elbows,
+             kp_rotation_elbows, kd_rotation_elbows],
+            [kp_position_elbows, kd_position_elbows,
+             kp_rotation_elbows, kd_rotation_elbows],
         ]
 
         # Base Tracking:
         # Position:
         base_ddx = np.zeros((3,))
         base_dx = np.zeros_like(base_ddx)
-        # Static Base Position:
-        # base_x = np.array([0.04638328773710699, -0.00014100711268926657, 1.0308927292801415])
         # Update Base Position based on average foot position:
-        base_xy = np.mean(
-            np.vstack(
-                [
-                    task_transform_translation[1, :],
-                    task_transform_translation[2, :],
-                ],
-            ),
-            axis=0,
-        )[:-1]
-        moving_z = 0.8 + 0.2 * np.sin(self.index / 1000.0)
-        base_x = np.array([0.04638328773710699, -0.00014100711268926657, moving_z])
-        # base_x = np.array([base_xy[0], base_xy[1], moving_z])
-        # Rotation:
-        # base_ddw = np.zeros_like(base_ddx)
-        # base_dw = np.zeros_like(base_ddw)
-        # base_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-        # Bang Bang:
-        # if self.index % 20000 == 0:
-        #     self.index = 0
-
-        # if self.index <= 10000:
-        #     theta = np.pi / 4.0
-        # else:
-        #     theta = -np.pi / 4.0
-        # base_w = np.array([np.cos(theta / 2), 0.0, 0.0, np.sin(theta / 2)])
+        base_z = 0.8 + 0.2 * np.sin(self.index / 1000.0)
+        base_x = np.array([0.046, 0.00, base_z])
 
         # Position and Velocity Tracking:
         amplitude_scale = 0.3
         frequency_scale = 2000.0
-        theta = amplitude_scale * np.sin(self.index / frequency_scale)
-        dtheta = amplitude_scale / frequency_scale * np.cos(self.index / frequency_scale)
-        ddtheta = -amplitude_scale / frequency_scale**2 * np.sin(self.index / frequency_scale)
-        base_w = np.array([1.0, 0.0, 0.0, theta])
-        base_w = base_w / np.linalg.norm(base_w)
-        base_dw = np.array([0.0, 0.0, dtheta])
-        base_ddw = np.array([0.0, 0.0, ddtheta])
+        # theta = amplitude_scale * np.sin(self.index / frequency_scale)
+        # dtheta = amplitude_scale / frequency_scale * np.cos(self.index / frequency_scale)
+        # ddtheta = -amplitude_scale / frequency_scale**2 * np.sin(self.index / frequency_scale)
+        # base_w = np.array([1.0, 0.0, 0.0, theta])
+        # base_w = base_w / np.linalg.norm(base_w)
+        # base_dw = np.array([0.0, 0.0, dtheta])
+        # base_ddw = np.array([0.0, 0.0, ddtheta])
 
-        self.index += 1
+        base_w = np.array([1.0, 0.0, 0.0, 0.0])
+        base_dw = np.array([0.0, 0.0, 0.0])
+        base_ddw = np.array([0.0, 0.0, 0.0])
 
         # Foot Tracking:
         # Position:
         foot_ddx = np.zeros_like(base_ddx)
         foot_dx = np.zeros_like(foot_ddx)
-        left_foot_x = np.array([0.009485657750110333, 0.10003118944491024, -0.0006031847782857091])
-        right_foot_x = np.array([0.009501654135451067, -0.10004060651147584, -0.0006041746580776665])
+        left_foot_x = np.array([0.009, 0.100, 0.000])
+        right_foot_x = np.array([0.009, -0.100, 0.000])
         # Rotation:
         foot_ddw = np.zeros_like(base_ddx)
         foot_dw = np.zeros_like(foot_ddw)
         left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
         right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
 
+        # Hand Tracking:
+        # Position:
+        hand_ddx = np.zeros_like(base_ddx)
+        hand_dx = np.zeros_like(hand_ddx)
+        left_hand_x = np.array([0.19, 0.3, 0.92])
+        right_hand_x = np.array([0.19, -0.3, 0.92])
+        # Rotation:
+        hand_ddw = np.zeros_like(base_ddx)
+        hand_dw = np.zeros_like(hand_ddw)
+        left_hand_w = np.array([1.0, 0.0, 0.0, 0.0])
+        right_hand_w = np.array([1.0, 0.0, 0.0, 0.0])
+
+        # Elbow Tracking:
+        # Position:
+        elbow_ddx = np.zeros_like(base_ddx)
+        elbow_dx = np.zeros_like(elbow_ddx)
+        elbow_z = 1.13 + 0.2 * np.sin(self.index / 1000.0)
+        left_elbow_x = np.array([-0.11, 0.32, elbow_z])
+        right_elbow_x = np.array([-0.11, -0.32, elbow_z])
+        # Rotation:
+        elbow_ddw = np.zeros_like(base_ddx)
+        elbow_dw = np.zeros_like(elbow_ddw)
+        left_elbow_w = np.array([1.0, 0.0, 0.0, 0.0])
+        right_elbow_w = np.array([1.0, 0.0, 0.0, 0.0])
+
+        self.index += 1
+
         position_target = [
             [base_ddx, base_dx, base_x],
             [foot_ddx, foot_dx, left_foot_x],
             [foot_ddx, foot_dx, right_foot_x],
+            [hand_ddx, hand_dx, left_hand_x],
+            [hand_ddx, hand_dx, right_hand_x],
+            [elbow_ddx, elbow_dx, left_elbow_x],
+            [elbow_ddx, elbow_dx, right_elbow_x],
         ]
         rotation_target = [
             [base_ddw, base_dw, base_w],
             [foot_ddw, foot_dw, left_foot_w],
             [foot_ddw, foot_dw, right_foot_w],
+            [hand_ddw, hand_dw, left_hand_w],
+            [hand_ddw, hand_dw, right_hand_w],
+            [elbow_ddw, elbow_dw, left_elbow_w],
+            [elbow_ddw, elbow_dw, right_elbow_w],
         ]
-        task_J = np.split(task_jacobian, 3)
-        task_position = np.split(task_transform_translation, 3)
-        task_rotation = np.split(task_transform_rotation, 3)
+        task_J = np.split(task_jacobian, 7)
+        task_position = np.split(task_transform_translation, 7)
+        task_rotation = np.split(task_transform_rotation, 7)
 
         loop_iterables = zip(
             task_position,

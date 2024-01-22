@@ -27,10 +27,10 @@ class TaskSpace(LeafSystem):
         self.update_rate = 1.0 / 1000.0
 
         # Abstract States: Task Space Matrices
-        self.task_transform_rotation_size = np.zeros(12)
-        self.task_transform_translation_size = np.zeros(9)
-        self.task_jacobian_size = np.zeros(612)
-        self.task_bias_size = np.zeros(18)
+        self.task_transform_rotation_size = np.zeros(28)
+        self.task_transform_translation_size = np.zeros(21)
+        self.task_jacobian_size = np.zeros(1428)
+        self.task_bias_size = np.zeros(42)
         self.task_transform_rotation_index = self.DeclareAbstractState(
             Value[BasicVector](self.task_transform_rotation_size)
         )
@@ -150,6 +150,10 @@ class TaskSpace(LeafSystem):
                 "base_link",
                 "left-foot_link",
                 "right-foot_link",
+                "left-hand_link",
+                "right-hand_link",
+                "left-elbow_link",
+                "right-elbow_link",
             ],
             base_body_name="world",
         )

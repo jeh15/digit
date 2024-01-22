@@ -27,7 +27,7 @@ def equality_constraints(
     H: jax.typing.ArrayLike,
     H_bias: jax.typing.ArrayLike,
     J: jax.typing.ArrayLike,
-    split_indx: tuple[int, int, int, int],
+    split_indx: tuple[int, int, int],
 ) -> jnp.ndarray:
     """Equality constraints for the dynamics of a system.
 
@@ -61,7 +61,9 @@ def equality_constraints(
     z = q[f_indx:]
 
     # Extract feet jacobian:
-    base_J, left_foot_J, right_foot_J = jnp.split(J, 3)
+    # [base, left_foot, right_foot, left_hand, right_hand, left_elbow, right_elbow]
+    split_J = jnp.split(J, 7)
+    left_foot_J, right_foot_J = split_J[1], split_J[2]
     J = jnp.concatenate(
         [left_foot_J, right_foot_J],
     )
@@ -87,7 +89,7 @@ def inequality_constraints(
     q: jax.typing.ArrayLike,
     z_previous: jax.typing.ArrayLike,
     friction: float,
-    split_indx: tuple[int, int, int, int, int],
+    split_indx: tuple[int, int, int],
 ) -> jnp.ndarray:
     """Inequality constraints for the dynamics of a system.
 
@@ -150,15 +152,13 @@ def inequality_constraints(
     return inequality_constraints
 
 
-@partial(jax.jit, static_argnames=['dt', 'split_indx'])
+@partial(jax.jit, static_argnames=['split_indx'])
 def objective(
     q: jax.typing.ArrayLike,
     task_jacobian: jax.typing.ArrayLike,
     task_bias: jax.typing.ArrayLike,
     desired_task_acceleration: jax.typing.ArrayLike,
-    arm_state: jax.typing.ArrayLike,
-    dt: float,
-    split_indx: tuple[int, int, int, int, int],
+    split_indx: tuple[int, int, int],
 ) -> jnp.ndarray:
     # Split optimization variables:
     dv_indx, u_indx, f_indx = split_indx
@@ -174,24 +174,40 @@ def objective(
     ddx_task = task_jacobian @ dv + task_bias
 
     # Split the Task Space Jacobians:
-    ddx_base, ddx_left_foot, ddx_right_foot = jnp.split(ddx_task, 3)
-    desired_base, desired_left_foot, desired_right_foot = jnp.split(desired_task_acceleration, 3)
+    split_ddx_task = jnp.split(ddx_task, 7)
+    ddx_base = split_ddx_task[0]
+    ddx_left_foot, ddx_right_foot = split_ddx_task[1], split_ddx_task[2]
+    ddx_left_hand, ddx_right_hand = split_ddx_task[3], split_ddx_task[4]
+    ddx_left_elbow, ddx_right_elbow = split_ddx_task[5], split_ddx_task[6]
 
-    # base_tracking_weight = 10.0
-    # foot_tracking_weight = 100.0
-    # base_error = base_tracking_weight * (ddx_base - desired_base) ** 2
-    # left_foot_error = foot_tracking_weight * (ddx_left_foot - desired_left_foot) ** 2
-    # right_foot_error = foot_tracking_weight * (ddx_right_foot - desired_right_foot) ** 2
+    split_desired = jnp.split(desired_task_acceleration, 7)
+    desired_base = split_desired[0]
+    desired_left_foot, desired_right_foot = split_desired[1], split_desired[2]
+    desired_left_hand, desired_right_hand = split_desired[3], split_desired[4]
+    desired_left_elbow, desired_right_elbow = split_desired[5], split_desired[6]
+
     base_tracking_w_weight = 10.0
     base_tracking_x_weight = 10.0
     foot_tracking_w_weight = 100.0
     foot_tracking_x_weight = 100.0
+    hand_tracking_w_weight = 10.0
+    hand_tracking_x_weight = 10.0
+    elbow_tracking_w_weight = 10.0
+    elbow_tracking_x_weight = 10.0
     base_error_w = base_tracking_w_weight * (ddx_base[:3] - desired_base[:3]) ** 2
     base_error_x = base_tracking_x_weight * (ddx_base[3:] - desired_base[3:]) ** 2
     left_foot_error_w = foot_tracking_w_weight * (ddx_left_foot[:3] - desired_left_foot[:3]) ** 2
     left_foot_error_x = foot_tracking_x_weight * (ddx_left_foot[3:] - desired_left_foot[3:]) ** 2
     right_foot_error_w = foot_tracking_w_weight * (ddx_right_foot[:3] - desired_right_foot[:3]) ** 2
     right_foot_error_x = foot_tracking_x_weight * (ddx_right_foot[3:] - desired_right_foot[3:]) ** 2
+    left_hand_error_w = hand_tracking_w_weight * (ddx_left_hand[:3] - desired_left_hand[:3]) ** 2
+    left_hand_error_x = hand_tracking_x_weight * (ddx_left_hand[3:] - desired_left_hand[3:]) ** 2
+    right_hand_error_w = hand_tracking_w_weight * (ddx_right_hand[:3] - desired_right_hand[:3]) ** 2
+    right_hand_error_x = hand_tracking_x_weight * (ddx_right_hand[3:] - desired_right_hand[3:]) ** 2
+    left_elbow_error_w = elbow_tracking_w_weight * (ddx_left_elbow[:3] - desired_left_elbow[:3]) ** 2
+    left_elbow_error_x = elbow_tracking_x_weight * (ddx_left_elbow[3:] - desired_left_elbow[3:]) ** 2
+    right_elbow_error_w = elbow_tracking_w_weight * (ddx_right_elbow[:3] - desired_right_elbow[:3]) ** 2
+    right_elbow_error_x = elbow_tracking_x_weight * (ddx_right_elbow[3:] - desired_right_elbow[3:]) ** 2
 
     task_objective = jnp.sum(
         (
@@ -201,6 +217,14 @@ def objective(
             + left_foot_error_x
             + right_foot_error_w
             + right_foot_error_x
+            + left_hand_error_w
+            + left_hand_error_x
+            + right_hand_error_w
+            + right_hand_error_x
+            + left_elbow_error_w
+            + left_elbow_error_x
+            + right_elbow_error_w
+            + right_elbow_error_x
         ),
     )
 
@@ -212,30 +236,6 @@ def objective(
     arm_movement = (
         jnp.sum(left_arm_dv ** 2) 
         + jnp.sum(right_arm_dv ** 2)
-    )
-
-    # Nominal Arm Position:
-    left_arm_nominal = jnp.array(
-        [-1.50543436e-01, 1.09212242e+00, 1.59629876e-04, -1.39115280e-01]
-    )
-    right_arm_nominal = jnp.array(
-        [1.50514674e-01, -1.09207448e+00, -1.74969684e-04, 1.39105692e-01]
-    ) 
-    left_arm_velocity = arm_state[1, :] + left_arm_dv * dt
-    left_arm_position = arm_state[0, :] + left_arm_velocity * dt
-    right_arm_velocity = arm_state[3, :] + right_arm_dv * dt
-    right_arm_position = arm_state[2, :] + right_arm_velocity * dt
-    left_arm_position_objective = jnp.sum((left_arm_nominal - left_arm_position) ** 2)
-    left_arm_velocity_objective = jnp.sum(left_arm_velocity ** 2)
-    right_arm_position_objective = jnp.sum((right_arm_nominal - right_arm_position) ** 2)
-    right_arm_velocity_objective = jnp.sum(right_arm_velocity ** 2)
-    nominal_arm_position = (
-        left_arm_position_objective
-        + right_arm_position_objective
-    )
-    arm_velocity = (
-        left_arm_velocity_objective
-        + right_arm_velocity_objective
     )
 
     # Arm Control:
@@ -264,8 +264,6 @@ def objective(
     y_rotational_ground_reaction_weight = 0.0
     z_rotational_ground_reaction_weight = 0.0
     arm_movement_weight = 1.0
-    nominal_position_weight = 1e8
-    arm_velocity_weight = 0
     arm_control_objective_weight = 0.0
     acceleration_weight = 0.0
     objective_value = (
@@ -279,8 +277,6 @@ def objective(
         + y_rotational_ground_reaction_weight * y_rotational_ground_reaction_objective
         + z_rotational_ground_reaction_weight * z_rotational_ground_reaction_objective
         + arm_movement_weight * arm_movement
-        + nominal_position_weight * nominal_arm_position
-        + arm_velocity_weight * arm_velocity
         + arm_control_objective_weight * arm_control_objective
         + acceleration_weight * acceleration_objective
     )
@@ -325,13 +321,11 @@ def initialize_optimization(
         split_indx,
     )
 
-    objective_fn = lambda q, task_jacobian, task_bias, ddx_desired, arm_state: objective(
+    objective_fn = lambda q, task_jacobian, task_bias, ddx_desired: objective(
         q,
         task_jacobian,
         task_bias,
         ddx_desired,
-        arm_state,
-        dt,
         split_indx,
     )
 
@@ -350,7 +344,7 @@ def initialize_optimization(
 
 
 def initialize_program(
-    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
     program: OSQP,
     equality_functions: Callable,
@@ -360,7 +354,7 @@ def initialize_program(
 ) -> OSQP:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, z_previous = constraint_constants
-    task_jacobian, task_bias, ddx_desired, arm_state = objective_constants
+    task_jacobian, task_bias, ddx_desired = objective_constants
     dv_size, u_size, f_size, z_size = optimization_size
 
     # Unpack optimization functions:
@@ -423,8 +417,8 @@ def initialize_program(
         ],
     )
 
-    H = H_fn(q, task_jacobian, task_bias, ddx_desired, arm_state)
-    f = f_fn(q, task_jacobian, task_bias, ddx_desired, arm_state)
+    H = H_fn(q, task_jacobian, task_bias, ddx_desired)
+    f = f_fn(q, task_jacobian, task_bias, ddx_desired)
 
     # Convert to sparse:
     A = sparse.csc_matrix(
@@ -463,7 +457,7 @@ def initialize_program(
 
 
 def update_program(
-    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
     program: OSQP,
     equality_functions: Callable,
@@ -473,7 +467,7 @@ def update_program(
 ) -> tuple[Solution, OSQP]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, z_previous = constraint_constants
-    task_jacobian, task_bias, ddx_desired, arm_state = objective_constants
+    task_jacobian, task_bias, ddx_desired = objective_constants
     dv_size, u_size, f_size, z_size = optimization_size
 
     # Unpack optimization functions:
@@ -535,8 +529,8 @@ def update_program(
         ],
     )
 
-    H = H_fn(q, task_jacobian, task_bias, ddx_desired, arm_state)
-    f = f_fn(q, task_jacobian, task_bias, ddx_desired, arm_state)
+    H = H_fn(q, task_jacobian, task_bias, ddx_desired)
+    f = f_fn(q, task_jacobian, task_bias, ddx_desired)
 
     # Convert to sparse:
     A = sparse.csc_matrix(

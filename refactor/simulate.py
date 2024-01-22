@@ -77,14 +77,6 @@ def main(argv=None):
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
 
-    # config = VisualizationConfig()
-    # config.publish_contacts = True
-    # ApplyVisualizationConfig(
-    #     config=config,
-    #     builder=builder,
-    #     scene_graph=scene_graph,
-    # )
-
     # Set Default Position:
     default_position = np.array(
         [
@@ -210,28 +202,44 @@ def main(argv=None):
     )
 
     # Contact Visualizer:
-    contact_visualizer = ContactVisualizer(
-        meshcat,
-    )
-    contact_visualizer.AddToBuilder(
-        builder=builder,
-        plant=plant,
-        meshcat=meshcat,
-    )
+    # contact_visualizer = ContactVisualizer(
+    #     meshcat,
+    # )
+    # contact_visualizer.AddToBuilder(
+    #     builder=builder,
+    #     plant=plant,
+    #     meshcat=meshcat,
+    # )
 
     # Frame Triad Visualizer:
-    AddFrameTriadIllustration(
-        scene_graph=scene_graph,
-        body=plant.GetBodyByName("base_link"),
-    )
-    AddFrameTriadIllustration(
-        scene_graph=scene_graph,
-        body=plant.GetBodyByName("left-foot_link"),
-    )
-    AddFrameTriadIllustration(
-        scene_graph=scene_graph,
-        body=plant.GetBodyByName("right-foot_link"),
-    )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("base_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("left-foot_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("right-foot_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("left-hand_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("right-hand_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("left-elbow_link"),
+    # )
+    # AddFrameTriadIllustration(
+    #     scene_graph=scene_graph,
+    #     body=plant.GetBodyByName("right-elbow_link"),
+    # )
 
     # Build diagram:
     diagram = builder.Build()
