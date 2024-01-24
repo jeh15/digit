@@ -22,6 +22,7 @@ import digit_utilities
 # LeafSystem Imports:
 import controller_module
 import taskspace_module
+import trajectory_module
 import agility_module
 
 # Digit API:
@@ -124,6 +125,11 @@ def main(argv=None):
     )
     taskspace_projection = builder.AddSystem(driver_taskspace_projection)
 
+    driver_trajectory_system = trajectory_module.TrajectorySystem(
+        plant=plant,
+    )
+    trajectory_system = builder.AddSystem(driver_trajectory_system)
+
     driver_context_system = agility_module.AgilityContextSystem(
         plant=plant,
         digit_idx=digit_idx,
@@ -178,6 +184,12 @@ def main(argv=None):
     builder.Connect(
         pid_controller.get_output_port(driver_pid_controller.control_port),
         osc_controller.get_input_port(driver_osc_controller.desired_ddx_port),
+    )
+
+    # Trajectory System -> PID Controller:
+    builder.Connect(
+        trajectory_system.get_output_port(driver_trajectory_system.trajectory_port),
+        pid_controller.get_input_port(driver_pid_controller.trajectory_port),
     )
 
     # Task Space Projection -> PID Controller:

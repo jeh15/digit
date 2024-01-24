@@ -17,6 +17,7 @@ import model_utilities
 
 from context_utilities import make_context_wrapper_value
 from digit_utilities import DigitUtilities
+from trajectory_module import make_trajectory_wrapper_value
 
 
 class OSC(LeafSystem):
@@ -377,6 +378,12 @@ class PID(LeafSystem):
             make_context_wrapper_value(self.plant),
         ).get_index()
 
+        # Input Port: Trajectory
+        self.trajectory_port = self.DeclareAbstractInputPort(
+            "trajectory",
+            make_trajectory_wrapper_value(),
+        ).get_index()
+
         # Output Port: Control Input
         self.control_port = self.DeclareVectorOutputPort(
             "control_input",
@@ -426,6 +433,11 @@ class PID(LeafSystem):
         self.plant_context = self.get_input_port(
             self.plant_context_port,
         ).Eval(context).context
+
+        # Get Input Ports: Trajectory
+        trajectory = self.get_input_port(
+            self.trajectory_port,
+        ).Eval(context)
 
         # Get Input Ports: Task Space Matrices
         task_jacobian = self.get_input_port(
@@ -481,7 +493,7 @@ class PID(LeafSystem):
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Hand Tracking:
-        kp_position_hands = 100.0
+        kp_position_hands = 500.0
         kd_position_hands = 2 * np.sqrt(kp_position_hands)
         kp_rotation_hands = 0.0
         kd_rotation_hands = 2 * np.sqrt(kp_rotation_hands)
@@ -509,86 +521,26 @@ class PID(LeafSystem):
              kp_rotation_elbows, kd_rotation_elbows],
         ]
 
-        # Base Tracking:
-        # Position:
-        base_ddx = np.zeros((3,))
-        base_dx = np.zeros_like(base_ddx)
-        # Update Base Position based on average foot position:
-        base_z = 0.8 + 0.2 * np.sin(self.index / 1000.0)
-        base_x = np.array([0.046, 0.00, base_z])
-
-        # Position and Velocity Tracking:
-        amplitude_scale = 0.3
-        frequency_scale = 2000.0
-        # theta = amplitude_scale * np.sin(self.index / frequency_scale)
-        # dtheta = amplitude_scale / frequency_scale * np.cos(self.index / frequency_scale)
-        # ddtheta = -amplitude_scale / frequency_scale**2 * np.sin(self.index / frequency_scale)
-        # base_w = np.array([1.0, 0.0, 0.0, theta])
-        # base_w = base_w / np.linalg.norm(base_w)
-        # base_dw = np.array([0.0, 0.0, dtheta])
-        # base_ddw = np.array([0.0, 0.0, ddtheta])
-
-        base_w = np.array([1.0, 0.0, 0.0, 0.0])
-        base_dw = np.array([0.0, 0.0, 0.0])
-        base_ddw = np.array([0.0, 0.0, 0.0])
-
-        # Foot Tracking:
-        # Position:
-        foot_ddx = np.zeros_like(base_ddx)
-        foot_dx = np.zeros_like(foot_ddx)
-        left_foot_x = np.array([0.009, 0.100, 0.000])
-        right_foot_x = np.array([0.009, -0.100, 0.000])
-        # Rotation:
-        foot_ddw = np.zeros_like(base_ddx)
-        foot_dw = np.zeros_like(foot_ddw)
-        left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-        right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-        # Hand Tracking:
-        # Position:
-        hand_ddx = np.zeros_like(base_ddx)
-        hand_dx = np.zeros_like(hand_ddx)
-        left_hand_x = np.array([0.19, 0.3, 0.92])
-        right_hand_x = np.array([0.19, -0.3, 0.92])
-        # Rotation:
-        hand_ddw = np.zeros_like(base_ddx)
-        hand_dw = np.zeros_like(hand_ddw)
-        left_hand_w = np.array([1.0, 0.0, 0.0, 0.0])
-        right_hand_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-        # Elbow Tracking:
-        # Position:
-        elbow_ddx = np.zeros_like(base_ddx)
-        elbow_dx = np.zeros_like(elbow_ddx)
-        elbow_z = 1.13 + 0.2 * np.sin(self.index / 1000.0)
-        left_elbow_x = np.array([-0.11, 0.32, elbow_z])
-        right_elbow_x = np.array([-0.11, -0.32, elbow_z])
-        # Rotation:
-        elbow_ddw = np.zeros_like(base_ddx)
-        elbow_dw = np.zeros_like(elbow_ddw)
-        left_elbow_w = np.array([1.0, 0.0, 0.0, 0.0])
-        right_elbow_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-        self.index += 1
-
         position_target = [
-            [base_ddx, base_dx, base_x],
-            [foot_ddx, foot_dx, left_foot_x],
-            [foot_ddx, foot_dx, right_foot_x],
-            [hand_ddx, hand_dx, left_hand_x],
-            [hand_ddx, hand_dx, right_hand_x],
-            [elbow_ddx, elbow_dx, left_elbow_x],
-            [elbow_ddx, elbow_dx, right_elbow_x],
+            [trajectory.base_trajectory['ddx'], trajectory.base_trajectory['dx'], trajectory.base_trajectory['x']],
+            [trajectory.left_foot_trajectory['ddx'], trajectory.left_foot_trajectory['dx'], trajectory.left_foot_trajectory['x']],
+            [trajectory.right_foot_trajectory['ddx'], trajectory.right_foot_trajectory['dx'], trajectory.right_foot_trajectory['x']],
+            [trajectory.left_hand_trajectory['ddx'], trajectory.left_hand_trajectory['dx'], trajectory.left_hand_trajectory['x']],
+            [trajectory.right_hand_trajectory['ddx'], trajectory.right_hand_trajectory['dx'], trajectory.right_hand_trajectory['x']],
+            [trajectory.left_elbow_trajectory['ddx'], trajectory.left_elbow_trajectory['dx'], trajectory.left_elbow_trajectory['x']],
+            [trajectory.right_elbow_trajectory['ddx'], trajectory.right_elbow_trajectory['dx'], trajectory.right_elbow_trajectory['x']],
         ]
+
         rotation_target = [
-            [base_ddw, base_dw, base_w],
-            [foot_ddw, foot_dw, left_foot_w],
-            [foot_ddw, foot_dw, right_foot_w],
-            [hand_ddw, hand_dw, left_hand_w],
-            [hand_ddw, hand_dw, right_hand_w],
-            [elbow_ddw, elbow_dw, left_elbow_w],
-            [elbow_ddw, elbow_dw, right_elbow_w],
+            [trajectory.base_trajectory['ddw'], trajectory.base_trajectory['dw'], trajectory.base_trajectory['w']],
+            [trajectory.left_foot_trajectory['ddw'], trajectory.left_foot_trajectory['dw'], trajectory.left_foot_trajectory['w']],
+            [trajectory.right_foot_trajectory['ddw'], trajectory.right_foot_trajectory['dw'], trajectory.right_foot_trajectory['w']],
+            [trajectory.left_hand_trajectory['ddw'], trajectory.left_hand_trajectory['dw'], trajectory.left_hand_trajectory['w']],
+            [trajectory.right_hand_trajectory['ddw'], trajectory.right_hand_trajectory['dw'], trajectory.right_hand_trajectory['w']],
+            [trajectory.left_elbow_trajectory['ddw'], trajectory.left_elbow_trajectory['dw'], trajectory.left_elbow_trajectory['w']],
+            [trajectory.right_elbow_trajectory['ddw'], trajectory.right_elbow_trajectory['dw'], trajectory.right_elbow_trajectory['w']],
         ]
+
         task_J = np.split(task_jacobian, 7)
         task_position = np.split(task_transform_translation, 7)
         task_rotation = np.split(task_transform_rotation, 7)

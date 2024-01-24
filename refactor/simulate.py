@@ -24,6 +24,7 @@ import digit_utilities
 
 import controller_module
 import taskspace_module
+import trajectory_module
 import context_utilities
 
 
@@ -128,6 +129,11 @@ def main(argv=None):
     )
     context_system = builder.AddSystem(driver_context_system)
 
+    driver_trajectory_system = trajectory_module.TrajectorySystem(
+        plant=plant,
+    )
+    trajectory_system = builder.AddSystem(driver_trajectory_system)
+
     # Connect Systems:
     # Plant -> Context System:
     builder.Connect(
@@ -165,6 +171,12 @@ def main(argv=None):
     builder.Connect(
         pid_controller.get_output_port(driver_pid_controller.control_port),
         osc_controller.get_input_port(driver_osc_controller.desired_ddx_port),
+    )
+
+    # Trajectory System -> PID Controller:
+    builder.Connect(
+        trajectory_system.get_output_port(driver_trajectory_system.trajectory_port),
+        pid_controller.get_input_port(driver_pid_controller.trajectory_port),
     )
 
     # Task Space Projection -> PID Controller:
