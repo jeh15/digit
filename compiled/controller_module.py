@@ -193,10 +193,7 @@ class OSC(LeafSystem):
 
         # Initialize Solver and Optimization:
         self.program = osqp.OSQP()
-        equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
-            optimization_size=optimization_size,
-            dt=self.update_rate,
-        )
+        equality_fn, inequality_fn, objective_fn = optimization_utilities.link_shared_library()
 
         self.program = optimization_utilities.initialize_program(
             constraint_constants=constraint_constants,
