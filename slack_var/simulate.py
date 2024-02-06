@@ -42,7 +42,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = Meshcat(port=7004)
+    meshcat = Meshcat(port=7006)
 
     builder = DiagramBuilder()
     time_step = 0.0005

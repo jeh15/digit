@@ -17,6 +17,7 @@ class TaskSpace(LeafSystem):
     def __init__(
         self,
         plant: MultibodyPlant,
+        update_rate: float = 1.0 / 1000.0,
     ):
         LeafSystem.__init__(self)
         # Store Plant and Create Context:
@@ -24,7 +25,7 @@ class TaskSpace(LeafSystem):
         self.plant_context = self.plant.CreateDefaultContext()
 
         # Parameters:
-        self.update_rate = 1.0 / 1000.0
+        self.update_rate = update_rate
 
         # Abstract States: Task Space Matrices
         self.task_transform_rotation_size = np.zeros(28)

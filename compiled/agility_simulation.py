@@ -43,7 +43,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = Meshcat(port=7004)
+    meshcat = Meshcat(port=7005)
 
     builder = DiagramBuilder()
     time_step = 0.0005
@@ -107,26 +107,33 @@ def main(argv=None):
     )
 
     # Initialize Systems:
+    osc_rate = 1.0 / 100.0
+    update_rate = 1.0 / 1000.0
+
     driver_osc_controller = controller_module.OSC(
         plant=plant,
         digit_idx=digit_idx,
         constraint_frames=constraint_frames,
+        update_rate=osc_rate,
     )
     osc_controller = builder.AddSystem(driver_osc_controller)
 
     driver_pid_controller = controller_module.PID(
         plant=plant,
         digit_idx=digit_idx,
+        update_rate=update_rate,
     )
     pid_controller = builder.AddSystem(driver_pid_controller)
 
     driver_taskspace_projection = taskspace_module.TaskSpace(
         plant=plant,
+        update_rate=update_rate,
     )
     taskspace_projection = builder.AddSystem(driver_taskspace_projection)
 
     driver_trajectory_system = trajectory_module.TrajectorySystem(
         plant=plant,
+        update_rate=update_rate,
     )
     trajectory_system = builder.AddSystem(driver_trajectory_system)
 
@@ -139,22 +146,23 @@ def main(argv=None):
     driver_agility_publisher = agility_module.AgilityPublisher(
         plant=plant,
         digit_idx=digit_idx,
+        update_rate=update_rate,
     )
     agility_publisher = builder.AddSystem(driver_agility_publisher)
 
     # Connect Systems:
     # Connect Vector Source to Digit's Actuators:
-    actuation_vector = np.zeros(
-        plant.num_actuators(),
-        dtype=np.float64,
-    )
-    actuation_source = builder.AddSystem(
-        ConstantVectorSource(actuation_vector),
-    )
-    builder.Connect(
-        actuation_source.get_output_port(),
-        plant.get_actuation_input_port(),
-    )
+    # actuation_vector = np.zeros(
+    #     plant.num_actuators(),
+    #     dtype=np.float64,
+    # )
+    # actuation_source = builder.AddSystem(
+    #     ConstantVectorSource(actuation_vector),
+    # )
+    # builder.Connect(
+    #     actuation_source.get_output_port(),
+    #     plant.get_actuation_input_port(),
+    # )
 
     # Context System -> OSC Controller:
     builder.Connect(
@@ -214,16 +222,6 @@ def main(argv=None):
     builder.Connect(
         taskspace_projection.get_output_port(driver_taskspace_projection.task_bias_port),
         osc_controller.get_input_port(driver_osc_controller.task_bias_port),
-    )
-
-    # Add Meshcat Visualizer:
-    meshcat_visualizer = MeshcatVisualizer(
-        meshcat,
-    )
-    meshcat_visualizer.AddToBuilder(
-        builder=builder,
-        scene_graph=scene_graph,
-        meshcat=meshcat,
     )
 
     # Build diagram:

@@ -61,24 +61,24 @@ def main(argv=None):
         os.path.join(unittest_path, "ddx_desired.txt"), delimiter=",",
     )
 
-    A_eq_jax = np.loadtxt(
-        os.path.join(unittest_path, "A_eq.txt"), delimiter=",",
-    )
-    b_eq_jax = np.loadtxt(
-        os.path.join(unittest_path, "b_eq.txt"), delimiter=",",
-    )
-    A_ineq_jax = np.loadtxt(
-        os.path.join(unittest_path, "A_ineq.txt"), delimiter=",",
-    )
-    b_ineq_jax = np.loadtxt(
-        os.path.join(unittest_path, "b_ineq.txt"), delimiter=",",
-    )
-    H_jax = np.loadtxt(
-        os.path.join(unittest_path, "hessian.txt"), delimiter=",",
-    )
-    f_jax = np.loadtxt(
-        os.path.join(unittest_path, "gradient.txt"), delimiter=",",
-    )
+    # A_eq_jax = np.loadtxt(
+    #     os.path.join(unittest_path, "A_eq.txt"), delimiter=",",
+    # )
+    # b_eq_jax = np.loadtxt(
+    #     os.path.join(unittest_path, "b_eq.txt"), delimiter=",",
+    # )
+    # A_ineq_jax = np.loadtxt(
+    #     os.path.join(unittest_path, "A_ineq.txt"), delimiter=",",
+    # )
+    # b_ineq_jax = np.loadtxt(
+    #     os.path.join(unittest_path, "b_ineq.txt"), delimiter=",",
+    # )
+    # H_jax = np.loadtxt(
+    #     os.path.join(unittest_path, "hessian.txt"), delimiter=",",
+    # )
+    # f_jax = np.loadtxt(
+    #     os.path.join(unittest_path, "gradient.txt"), delimiter=",",
+    # )
 
     # Calculate CasADi Values:
     total_time = []

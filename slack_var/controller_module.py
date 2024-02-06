@@ -10,6 +10,7 @@ from pydrake.systems.framework import (
     TriggerType,
 )
 from pydrake.multibody.plant import MultibodyPlant
+from pydrake.solvers import MathematicalProgram
 
 import dynamics_utilities
 import optimization_utilities
@@ -50,6 +51,7 @@ class OSC(LeafSystem):
         self.torque_size = np.zeros(plant.num_actuators())
         self.constraint_force_size = np.zeros(6)
         self.reaction_force_size = np.zeros(12)
+        self.slack_variable_size = np.zeros(42)
         self.acceleration_index = self.DeclareAbstractState(
             Value[BasicVector](self.acceleration_size)
         )
@@ -91,6 +93,8 @@ class OSC(LeafSystem):
         self.dv_indx = self.acceleration_size.shape[0]
         self.u_indx = self.torque_size.shape[0] + self.dv_indx
         self.f_indx = self.constraint_force_size.shape[0] + self.u_indx
+        self.z_indx = self.reaction_force_size.shape[0] + self.f_indx
+        self.slack_indx = self.slack_variable_size.shape[0] + self.z_indx
 
         # Declare Initialization Event: Initialize Optimization
         def on_initialization(context, event):
@@ -131,6 +135,7 @@ class OSC(LeafSystem):
             self.torque_size.shape[0],
             self.constraint_force_size.shape[0],
             self.reaction_force_size.shape[0],
+            self.slack_variable_size.shape[0],
         )
 
         # Calculate Dynamics:
@@ -192,13 +197,12 @@ class OSC(LeafSystem):
         )
 
         # Initialize Solver and Optimization:
-        self.program = osqp.OSQP()
+        self.program = MathematicalProgram()
         equality_fn, inequality_fn, objective_fn = optimization_utilities.initialize_optimization(
             optimization_size=optimization_size,
-            dt=self.update_rate,
         )
 
-        self.program = optimization_utilities.initialize_program(
+        self.program, self.program_handles = optimization_utilities.initialize_program(
             constraint_constants=constraint_constants,
             objective_constants=objective_constants,
             program=self.program,
@@ -209,10 +213,11 @@ class OSC(LeafSystem):
         )
 
         # Create Isolated Update Function:
-        self.update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
+        self.update_optimization = lambda constraint_constants, objective_constants, program, program_handles: optimization_utilities.update_program(
             constraint_constants,
             objective_constants,
             program,
+            program_handles,
             equality_fn,
             inequality_fn,
             objective_fn,
@@ -275,19 +280,31 @@ class OSC(LeafSystem):
             ddx_desired,
         )
 
-        start_time = time.time()
-        solution, self.program = self.update_optimization(
+        solution, self.program, self.program_handles = self.update_optimization(
             constraint_constants=constraint_constants,
             objective_constants=objective_constants,
             program=self.program,
+            program_handles=self.program_handles,
         )
-        end_time = time.time()
 
-        # Unpack Optimization Solution:
-        accelerations = solution.x[:self.dv_indx]
-        torque = solution.x[self.dv_indx:self.u_indx]
-        constraint_force = solution.x[self.u_indx:self.f_indx]
-        reaction_force = solution.x[self.f_indx:]
+        # Drake Solution
+        x_solution = solution.GetSolution()
+        accelerations = x_solution[:self.dv_indx]
+        torque = x_solution[self.dv_indx:self.u_indx]
+        constraint_force = x_solution[self.u_indx:self.f_indx]
+        reaction_force = x_solution[self.f_indx:self.z_indx]
+        slack_variable = x_solution[self.z_indx:self.slack_indx]
+
+        # Print Results:
+        print(f"Optimization: {solution.is_success()}")
+        print(f"Using: {solution.get_solver_id().name()}")
+
+        # OSQP Solution:
+        # accelerations = solution.x[:self.dv_indx]
+        # torque = solution.x[self.dv_indx:self.u_indx]
+        # constraint_force = solution.x[self.u_indx:self.f_indx]
+        # reaction_force = solution.x[self.f_indx:self.z_indx]
+        # slack_variable = solution.x[self.z_indx:self.slack_indx]
 
         # Update Abstract States:
         accelerations_state = context.get_mutable_abstract_state(

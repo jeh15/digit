@@ -3,10 +3,15 @@ from typing import Callable, Any
 
 import numpy as np
 import casadi
-from scipy import sparse
+
+from pydrake.solvers import (
+    MathematicalProgram,
+    Solve,
+    QuadraticCost,
+    LinearConstraint,
+)
 
 # Type Annotations:
-from osqp import OSQP
 Solution = Any
 ConstraintConstants = tuple[
     np.ndarray,
@@ -18,6 +23,12 @@ ConstraintConstants = tuple[
     np.ndarray,
 ]
 ObjectiveConstants = tuple[np.ndarray, np.ndarray, np.ndarray]
+
+# Constants:
+tolerance = 1e-5
+scale = 1e2
+significant_bits = 8
+eps = np.finfo(np.float64).eps
 
 
 def link_shared_library() -> tuple[
@@ -64,18 +75,18 @@ def link_shared_library() -> tuple[
 
 
 def initialize_program(
-    constraint_constants: ConstraintConstants,
-    objective_constants: ObjectiveConstants,
-    program: OSQP,
-    equality_functions: tuple[Callable, Callable],
-    inequality_functions: tuple[Callable, Callable],
-    objective_functions: tuple[Callable, Callable],
-    optimization_size: tuple[int, int, int, int],
-) -> OSQP:
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
+    program: MathematicalProgram,
+    equality_functions: Callable,
+    inequality_functions: Callable,
+    objective_functions: Callable,
+    optimization_size: tuple[int, int, int, int, int],
+) -> tuple[MathematicalProgram, tuple[LinearConstraint, QuadraticCost]]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, z_previous = constraint_constants
     task_jacobian, task_bias, ddx_desired = objective_constants
-    dv_size, u_size, f_size, z_size = optimization_size
+    dv_size, u_size, f_size, z_size, slack_size  = optimization_size
 
     # Unpack optimization functions:
     A_eq_fn, b_eq_fn = equality_functions
@@ -83,16 +94,12 @@ def initialize_program(
     H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    num_variables = dv_size + u_size + f_size + z_size
+    num_variables = dv_size + u_size + f_size + z_size + slack_size
     q = np.zeros((num_variables,))
 
-    # Generate Program Matricies: (b functions have already been negated)
-    A_eq = A_eq_fn(
-        q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian
-    ).toarray()
-    b_eq = b_eq_fn(
-        q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian
-    ).toarray().flatten()
+    # Generate program Matricies:
+    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias).toarray()
+    b_eq = b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias).toarray().flatten()
     A_ineq = A_ineq_fn(q, z_previous).toarray()
     ub_ineq = b_ineq_fn(q, z_previous).toarray().flatten()
     # Last 4 constraints are the zero moment constraints:
@@ -108,7 +115,7 @@ def initialize_program(
     A_box = np.eye(N=num_box_constraints, M=num_variables)
     lb_reaction_forces = np.array(
         [
-            np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, 0.0,
+            np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, 0.0, 
             np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, 0.0,
         ]
     )
@@ -118,12 +125,9 @@ def initialize_program(
     arm_torque_bounds = np.array([
         35.0, 35.0, 35.0, 35.0
     ])
-    torque_bounds = np.concatenate([
-        leg_torque_bounds,
-        arm_torque_bounds,
-        leg_torque_bounds,
-        arm_torque_bounds,
-    ])
+    torque_bounds = np.concatenate(
+        [leg_torque_bounds, arm_torque_bounds, leg_torque_bounds, arm_torque_bounds],
+    )
     lb_torque = -torque_bounds
     lb_box = np.concatenate(
         [
@@ -144,57 +148,52 @@ def initialize_program(
         ],
     )
 
-    H = H_fn(q, task_jacobian, task_bias, ddx_desired).toarray()
-    f = f_fn(q, task_jacobian, task_bias, ddx_desired).toarray().flatten()
+    H = H_fn(q, ddx_desired).toarray()
+    f = f_fn(q, ddx_desired).toarray().flatten()
 
     # Convert to sparse:
-    A = sparse.csc_matrix(
-        np.vstack(
-            [A_eq, A_ineq, A_box],
-        )
+    A = np.vstack(
+        [A_eq, A_ineq, A_box],
     )
 
     lb = np.concatenate([b_eq, lb_ineq, lb_box])
     ub = np.concatenate([b_eq, ub_ineq, ub_box])
 
-    H = sparse.csc_matrix(H)
+    # Drake MP:
+    opt_vars = program.NewContinuousVariables(num_variables, "q")
 
-    program.setup(
-        P=H,
-        q=f,
+    # Add Constraints:
+    constraint_handle = program.AddLinearConstraint(
         A=A,
-        l=lb,
-        u=ub,
-        verbose=False,
-        warm_start=True,
-        polish=True,
-        rho=1e-2,
-        max_iter=10000,
-        eps_abs=1e-4,
-        eps_rel=1e-4,
-        eps_prim_inf=1e-5,
-        eps_dual_inf=1e-5,
-        check_termination=10,
-        delta=1e-6,
-        polish_refine_iter=10,
+        lb=lb,
+        ub=ub,
+        vars=opt_vars,
     )
 
-    return program
+    # Add Objective:
+    objective_handle = program.AddQuadraticCost(
+        Q=H,
+        b=f,
+        vars=opt_vars,
+    )
+
+    return program, (constraint_handle, objective_handle)
 
 
 def update_program(
-    constraint_constants: ConstraintConstants,
-    objective_constants: ObjectiveConstants,
-    program: OSQP,
-    equality_functions: tuple[Callable, Callable],
-    inequality_functions: tuple[Callable, Callable],
-    objective_functions: tuple[Callable, Callable],
-    optimization_size: tuple[int, int, int, int],
-) -> tuple[Solution, OSQP]:
+    constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
+    program: MathematicalProgram,
+    program_handles: tuple[LinearConstraint, QuadraticCost],
+    equality_functions: Callable,
+    inequality_functions: Callable,
+    objective_functions: Callable,
+    optimization_size: tuple[int, int, int, int, int],
+) -> tuple[Solution, MathematicalProgram, tuple[LinearConstraint, QuadraticCost]]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, z_previous = constraint_constants
     task_jacobian, task_bias, ddx_desired = objective_constants
-    dv_size, u_size, f_size, z_size = optimization_size
+    dv_size, u_size, f_size, z_size, slack_size = optimization_size
 
     # Unpack optimization functions:
     A_eq_fn, b_eq_fn = equality_functions
@@ -202,16 +201,12 @@ def update_program(
     H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    num_variables = dv_size + u_size + f_size + z_size
+    num_variables = dv_size + u_size + f_size + z_size + slack_size
     q = np.zeros((num_variables,))
 
-    # Generate Program Matricies: (b functions have already been negated)
-    A_eq = A_eq_fn(
-        q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian
-    ).toarray()
-    b_eq = b_eq_fn(
-        q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian
-    ).toarray().flatten()
+    # Generate program Matricies:
+    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias).toarray()
+    b_eq = b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias).toarray().flatten()
     A_ineq = A_ineq_fn(q, z_previous).toarray()
     ub_ineq = b_ineq_fn(q, z_previous).toarray().flatten()
     lb_ineq = np.concatenate(
@@ -236,12 +231,9 @@ def update_program(
     arm_torque_bounds = np.array([
         35.0, 35.0, 35.0, 35.0
     ])
-    torque_bounds = np.concatenate([
-        leg_torque_bounds,
-        arm_torque_bounds,
-        leg_torque_bounds,
-        arm_torque_bounds,
-    ])
+    torque_bounds = np.concatenate(
+        [leg_torque_bounds, arm_torque_bounds, leg_torque_bounds, arm_torque_bounds],
+    )
     lb_torque = -torque_bounds
     lb_box = np.concatenate(
         [
@@ -262,29 +254,29 @@ def update_program(
         ],
     )
 
-    H = H_fn(q, task_jacobian, task_bias, ddx_desired).toarray()
-    f = f_fn(q, task_jacobian, task_bias, ddx_desired).toarray().flatten()
+    H = H_fn(q, ddx_desired).toarray()
+    f = f_fn(q, ddx_desired).toarray().flatten()
 
     # Convert to sparse:
-    A = sparse.csc_matrix(
-        np.vstack(
-            [A_eq, A_ineq, A_box],
-        )
+    A = np.vstack(
+        [A_eq, A_ineq, A_box],
     )
 
     lb = np.concatenate([b_eq, lb_ineq, lb_box])
     ub = np.concatenate([b_eq, ub_ineq, ub_box])
 
-    H = sparse.csc_matrix(H)
-
-    program.update(
-        Px=sparse.triu(H).data,
-        q=f,
-        Ax=A.data,
-        l=lb,
-        u=ub,
+    # Update program:
+    linear_constraint, quadratic_cost = program_handles
+    linear_constraint.evaluator().UpdateCoefficients(
+        new_A=A,
+        new_lb=lb,
+        new_ub=ub,
+    )
+    quadratic_cost.evaluator().UpdateCoefficients(
+        new_Q=H,
+        new_b=f,
     )
 
-    solution = program.solve()
+    solution = Solve(program)
 
-    return solution, program
+    return solution, program, (linear_constraint, quadratic_cost)

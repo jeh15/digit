@@ -42,7 +42,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = Meshcat(port=7004)
+    meshcat = Meshcat(port=7005)
 
     builder = DiagramBuilder()
     time_step = 0.0005
@@ -106,21 +106,26 @@ def main(argv=None):
     )
 
     # Initialize Systems:
+    osc_rate = 1.0 / 100.0
+    update_rate = 1.0 / 1000.0
     driver_osc_controller = controller_module.OSC(
         plant=plant,
         digit_idx=digit_idx,
         constraint_frames=constraint_frames,
+        update_rate=osc_rate,
     )
     osc_controller = builder.AddSystem(driver_osc_controller)
 
     driver_pid_controller = controller_module.PID(
         plant=plant,
         digit_idx=digit_idx,
+        update_rate=update_rate,
     )
     pid_controller = builder.AddSystem(driver_pid_controller)
 
     driver_taskspace_projection = taskspace_module.TaskSpace(
         plant=plant,
+        update_rate=update_rate,
     )
     taskspace_projection = builder.AddSystem(driver_taskspace_projection)
 
@@ -131,6 +136,7 @@ def main(argv=None):
 
     driver_trajectory_system = trajectory_module.TrajectorySystem(
         plant=plant,
+        update_rate=update_rate,
     )
     trajectory_system = builder.AddSystem(driver_trajectory_system)
 

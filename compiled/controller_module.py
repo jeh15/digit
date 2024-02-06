@@ -1,5 +1,4 @@
 import numpy as np
-import osqp
 
 from pydrake.common.value import Value
 from pydrake.common.eigen_geometry import Quaternion
@@ -10,6 +9,7 @@ from pydrake.systems.framework import (
     TriggerType,
 )
 from pydrake.multibody.plant import MultibodyPlant
+from pydrake.solvers import MathematicalProgram
 
 import dynamics_utilities
 import optimization_utilities
@@ -19,7 +19,18 @@ from context_utilities import make_context_wrapper_value
 from digit_utilities import DigitUtilities
 from trajectory_module import make_trajectory_wrapper_value
 
-import time
+significant_bits = 8.0
+eps = np.finfo(np.float64).eps
+
+
+def condition_matrix(matrices):
+    condition_matrix = []
+    for matrix in matrices:
+        matrix = np.asarray(matrix)
+        matrix = np.where(np.abs(matrix) < significant_bits * eps, 0.0, matrix)
+        condition_matrix.append(matrix)
+
+    return tuple(condition_matrix)
 
 
 class OSC(LeafSystem):
@@ -27,7 +38,8 @@ class OSC(LeafSystem):
         self,
         plant: MultibodyPlant,
         digit_idx: DigitUtilities,
-        constraint_frames: list
+        constraint_frames: list,
+        update_rate: float = 1.0 / 1000.0,
     ):
         LeafSystem.__init__(self)
 
@@ -42,7 +54,7 @@ class OSC(LeafSystem):
         self.constraint_frames = constraint_frames
 
         # Parameters:
-        self.update_rate = 1.0 / 1000.0
+        self.update_rate = update_rate
         self.B = self.digit_idx.control_matrix
 
         # Abstract States: OSC Solution -- Output
@@ -50,6 +62,7 @@ class OSC(LeafSystem):
         self.torque_size = np.zeros(plant.num_actuators())
         self.constraint_force_size = np.zeros(6)
         self.reaction_force_size = np.zeros(12)
+        self.slack_variable_size = np.zeros(42)
         self.acceleration_index = self.DeclareAbstractState(
             Value[BasicVector](self.acceleration_size)
         )
@@ -91,6 +104,8 @@ class OSC(LeafSystem):
         self.dv_indx = self.acceleration_size.shape[0]
         self.u_indx = self.torque_size.shape[0] + self.dv_indx
         self.f_indx = self.constraint_force_size.shape[0] + self.u_indx
+        self.z_indx = self.reaction_force_size.shape[0] + self.f_indx
+        self.slack_indx = self.slack_variable_size.shape[0] + self.z_indx
 
         # Declare Initialization Event: Initialize Optimization
         def on_initialization(context, event):
@@ -131,6 +146,7 @@ class OSC(LeafSystem):
             self.torque_size.shape[0],
             self.constraint_force_size.shape[0],
             self.reaction_force_size.shape[0],
+            self.slack_variable_size.shape[0],
         )
 
         # Calculate Dynamics:
@@ -192,10 +208,10 @@ class OSC(LeafSystem):
         )
 
         # Initialize Solver and Optimization:
-        self.program = osqp.OSQP()
+        self.program = MathematicalProgram()
         equality_fn, inequality_fn, objective_fn = optimization_utilities.link_shared_library()
 
-        self.program = optimization_utilities.initialize_program(
+        self.program, self.program_handles = optimization_utilities.initialize_program(
             constraint_constants=constraint_constants,
             objective_constants=objective_constants,
             program=self.program,
@@ -206,10 +222,11 @@ class OSC(LeafSystem):
         )
 
         # Create Isolated Update Function:
-        self.update_optimization = lambda constraint_constants, objective_constants, program: optimization_utilities.update_program(
+        self.update_optimization = lambda constraint_constants, objective_constants, program, program_handles: optimization_utilities.update_program(
             constraint_constants,
             objective_constants,
             program,
+            program_handles,
             equality_fn,
             inequality_fn,
             objective_fn,
@@ -236,7 +253,7 @@ class OSC(LeafSystem):
         # Reshape Matrices:
         task_jacobian = np.reshape(
             np.asarray(task_jacobian),
-            (-1, 34),
+            (42, 34),
         )
         task_bias = np.asarray(task_bias)
         ddx_desired = np.asarray(ddx_desired)
@@ -272,19 +289,20 @@ class OSC(LeafSystem):
             ddx_desired,
         )
 
-        start_time = time.time()
-        solution, self.program = self.update_optimization(
+        solution, self.program, self.program_handles = self.update_optimization(
             constraint_constants=constraint_constants,
             objective_constants=objective_constants,
             program=self.program,
+            program_handles=self.program_handles,
         )
-        end_time = time.time()
 
-        # Unpack Optimization Solution:
-        accelerations = solution.x[:self.dv_indx]
-        torque = solution.x[self.dv_indx:self.u_indx]
-        constraint_force = solution.x[self.u_indx:self.f_indx]
-        reaction_force = solution.x[self.f_indx:]
+        # Drake Solution
+        x_solution = solution.GetSolution()
+        accelerations = x_solution[:self.dv_indx]
+        torque = x_solution[self.dv_indx:self.u_indx]
+        constraint_force = x_solution[self.u_indx:self.f_indx]
+        reaction_force = x_solution[self.f_indx:self.z_indx]
+        slack_variable = x_solution[self.z_indx:self.slack_indx]
 
         # Update Abstract States:
         accelerations_state = context.get_mutable_abstract_state(
@@ -341,6 +359,7 @@ class PID(LeafSystem):
         self,
         plant: MultibodyPlant,
         digit_idx: DigitUtilities,
+        update_rate: float = 1.0 / 1000.0,
     ):
         LeafSystem.__init__(self)
         # Store Plant and Create Context:
@@ -351,7 +370,7 @@ class PID(LeafSystem):
         self.digit_idx = digit_idx
 
         # Parameters:
-        self.update_rate = 1.0 / 1000.0
+        self.update_rate = update_rate
 
         # Poor Mans Timer:
         self.index = 0.0
@@ -480,27 +499,25 @@ class PID(LeafSystem):
         # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Base Tracking:
-        kp_position_base = 200.0
+        kp_position_base = 500.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 500.0
-        kd_rotation_base = 200 * np.sqrt(kp_rotation_base)
-        # kp_rotation_base = 150.0
-        # kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
+        kp_rotation_base = 100.0
+        kd_rotation_base = 100 * np.sqrt(kp_rotation_base)
 
         # Feet Tracking:
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 100.0
+        kp_rotation_feet = 25.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Hand Tracking:
-        kp_position_hands = 500.0
+        kp_position_hands = 400.0
         kd_position_hands = 2 * np.sqrt(kp_position_hands)
         kp_rotation_hands = 0.0
         kd_rotation_hands = 2 * np.sqrt(kp_rotation_hands)
 
         # Elbow Tracking:
-        kp_position_elbows = 100.0
+        kp_position_elbows = 50.0
         kd_position_elbows = 2 * np.sqrt(kp_position_elbows)
         kp_rotation_elbows = 0.0
         kd_rotation_elbows = 2 * np.sqrt(kp_rotation_elbows)

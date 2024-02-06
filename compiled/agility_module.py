@@ -62,6 +62,7 @@ class AgilityPublisher(LeafSystem):
         self,
         plant: MultibodyPlant,
         digit_idx: DigitUtilities,
+        update_rate: float = 1.0 / 1000.0,
     ):
         super().__init__()
         self.plant = plant
@@ -69,7 +70,7 @@ class AgilityPublisher(LeafSystem):
         self.num_actuators = self.plant.num_actuators()
 
         # Update Rate:
-        self.update_rate = 1.0 / 1000.0
+        self.update_rate = update_rate
 
         # Input Port:
         self.torque_port = self.DeclareVectorInputPort(

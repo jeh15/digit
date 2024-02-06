@@ -6,6 +6,14 @@ import jax.numpy as jnp
 import numpy as np
 from scipy import sparse
 
+from pydrake.solvers import (
+    MathematicalProgram, 
+    Solve,
+    QuadraticCost,
+    LinearConstraint,
+)
+
+
 # Type Annotations:
 from osqp import OSQP
 Solution = Any
@@ -15,6 +23,20 @@ jax.config.update("jax_enable_x64", True)
 # Surpress warnings:
 # ruff: noqa: E731
 # flake8: noqa: E731
+
+significant_bits = 2
+eps = np.finfo(np.float64).eps
+# eps = 1e-4
+
+
+def condition_matrix(matrices):
+    condition_matrix = []
+    for matrix in matrices:
+        matrix = np.asarray(matrix)
+        matrix = np.where(np.abs(matrix) < significant_bits * eps, 0.0, matrix)
+        condition_matrix.append(matrix)
+
+    return tuple(condition_matrix)
 
 
 @partial(jax.jit, static_argnames=['split_indx'])
@@ -27,7 +49,8 @@ def equality_constraints(
     H: jax.typing.ArrayLike,
     H_bias: jax.typing.ArrayLike,
     J: jax.typing.ArrayLike,
-    split_indx: tuple[int, int, int],
+    J_bias: jax.typing.ArrayLike,
+    split_indx: tuple[int, int, int, int, int],
 ) -> jnp.ndarray:
     """Equality constraints for the dynamics of a system.
 
@@ -54,30 +77,36 @@ def equality_constraints(
         H @ dv + H_bias = 0
     """
     # Split optimization variables:
-    dv_indx, u_indx, f_indx = split_indx
+    dv_indx, u_indx, f_indx, z_indx, slack_indx = split_indx
     dv = q[:dv_indx]
     u = q[dv_indx:u_indx]
     f = q[u_indx:f_indx]
-    z = q[f_indx:]
+    z = q[f_indx:z_indx]
+    slack = q[z_indx:slack_indx]
 
     # Extract feet jacobian:
     # [base, left_foot, right_foot, left_hand, right_hand, left_elbow, right_elbow]
     split_J = jnp.split(J, 7)
     left_foot_J, right_foot_J = split_J[1], split_J[2]
-    J = jnp.concatenate(
+    contact_J = jnp.concatenate(
         [left_foot_J, right_foot_J],
     )
 
     # Dynamic Constraints:
-    dynamics = M @ dv + C - tau_g - B @ u - H.T @ f - J.T @ z
+    dynamics = M @ dv + C - tau_g - B @ u - H.T @ f - contact_J.T @ z
 
     # Kinematic Constraints:
     kinematic = H @ dv + H_bias
+
+    # Task Objective Slack:
+    ddx_task = J @ dv + J_bias
+    task_slack = ddx_task - slack
 
     equality_constraints = jnp.concatenate(
         [
             dynamics,
             kinematic,
+            task_slack,
         ],
     )
 
@@ -89,7 +118,7 @@ def inequality_constraints(
     q: jax.typing.ArrayLike,
     z_previous: jax.typing.ArrayLike,
     friction: float,
-    split_indx: tuple[int, int, int],
+    split_indx: tuple[int, int, int, int, int],
 ) -> jnp.ndarray:
     """Inequality constraints for the dynamics of a system.
 
@@ -103,8 +132,8 @@ def inequality_constraints(
     """
     # Calculate inequality constraints:
     # Split optimization variables:
-    dv_indx, u_indx, f_indx = split_indx
-    z = q[f_indx:]
+    dv_indx, u_indx, f_indx, z_indx, slack_indx = split_indx
+    z = q[f_indx:z_indx]
 
     # Reshape for easier indexing:
     z = jnp.reshape(z, (2, 6))
@@ -155,30 +184,26 @@ def inequality_constraints(
 @partial(jax.jit, static_argnames=['split_indx'])
 def objective(
     q: jax.typing.ArrayLike,
-    task_jacobian: jax.typing.ArrayLike,
-    task_bias: jax.typing.ArrayLike,
     desired_task_acceleration: jax.typing.ArrayLike,
-    split_indx: tuple[int, int, int],
+    split_indx: tuple[int, int, int, int, int],
 ) -> jnp.ndarray:
     # Split optimization variables:
-    dv_indx, u_indx, f_indx = split_indx
+    dv_indx, u_indx, f_indx, z_indx, slack_indx = split_indx
     dv = q[:dv_indx]
     u = q[dv_indx:u_indx]
     f = q[u_indx:f_indx]
-    z = q[f_indx:]
+    z = q[f_indx:z_indx]
+    slack = q[z_indx:slack_indx]
 
     # Reshape for easier indexing:
     z = jnp.reshape(z, (2, 6))
-    
-    # Calculate task objective:
-    ddx_task = task_jacobian @ dv + task_bias
 
     # Split the Task Space Jacobians:
-    split_ddx_task = jnp.split(ddx_task, 7)
-    ddx_base = split_ddx_task[0]
-    ddx_left_foot, ddx_right_foot = split_ddx_task[1], split_ddx_task[2]
-    ddx_left_hand, ddx_right_hand = split_ddx_task[3], split_ddx_task[4]
-    ddx_left_elbow, ddx_right_elbow = split_ddx_task[5], split_ddx_task[6]
+    split_slack = jnp.split(slack, 7)
+    ddx_base = split_slack[0]
+    ddx_left_foot, ddx_right_foot = split_slack[1], split_slack[2]
+    ddx_left_hand, ddx_right_hand = split_slack[3], split_slack[4]
+    ddx_left_elbow, ddx_right_elbow = split_slack[5], split_slack[6]
 
     split_desired = jnp.split(desired_task_acceleration, 7)
     desired_base = split_desired[0]
@@ -238,47 +263,14 @@ def objective(
         + jnp.sum(right_arm_dv ** 2)
     )
 
-    # Arm Control:
-    left_arm_control = jnp.sum(u[6:10] ** 2)
-    right_arm_control = jnp.sum(u[16:20] ** 2)
-    arm_control_objective = left_arm_control + right_arm_control
-
-    # Regularization:
-    acceleration_objective = jnp.sum(dv ** 2)
-    control_objective = jnp.sum(u ** 2)
-    constraint_objective = jnp.sum(f ** 2)
-    x_translational_ground_reaction_objective = jnp.sum(z[:, 3] ** 2)
-    y_translational_ground_reaction_objective = jnp.sum(z[:, 4] ** 2)
-    z_translational_ground_reaction_objective = jnp.sum(z[:, 5] ** 2)
-    x_rotational_ground_reaction_objective = jnp.sum(z[:, 0] ** 2)
-    y_rotational_ground_reaction_objective = jnp.sum(z[:, 1] ** 2)
-    z_rotational_ground_reaction_objective = jnp.sum(z[:, 2] ** 2)
-
     task_weight = 1.0
-    control_weight = 0.0
-    constraint_weight = 0.0
-    x_translational_ground_reaction_weight = 0.0
-    y_translational_ground_reaction_weight = 0.0
-    z_translational_ground_reaction_weight = 0.0
-    x_rotational_ground_reaction_weight = 0.0
-    y_rotational_ground_reaction_weight = 0.0
-    z_rotational_ground_reaction_weight = 0.0
     arm_movement_weight = 1.0
-    arm_control_objective_weight = 0.0
-    acceleration_weight = 0.0
+    regularization_weight = 1e-4
+    regularization_objective = regularization_weight * jnp.sum(q ** 2)
     objective_value = (
-        task_weight * task_objective 
-        + control_weight * control_objective 
-        + constraint_weight * constraint_objective
-        + x_translational_ground_reaction_weight * x_translational_ground_reaction_objective
-        + y_translational_ground_reaction_weight * y_translational_ground_reaction_objective
-        + z_translational_ground_reaction_weight * z_translational_ground_reaction_objective
-        + x_rotational_ground_reaction_weight * x_rotational_ground_reaction_objective
-        + y_rotational_ground_reaction_weight * y_rotational_ground_reaction_objective
-        + z_rotational_ground_reaction_weight * z_rotational_ground_reaction_objective
+        task_weight * task_objective
         + arm_movement_weight * arm_movement
-        + arm_control_objective_weight * arm_control_objective
-        + acceleration_weight * acceleration_objective
+        + regularization_objective
     )
 
     return objective_value
@@ -286,8 +278,7 @@ def objective(
 
 
 def initialize_optimization(
-    optimization_size: tuple[int, int, int, int],
-    dt: float,
+    optimization_size: tuple[int, int, int, int, int],
 ) -> tuple[
     tuple[jnp.ndarray, jnp.ndarray],
     tuple[jnp.ndarray, jnp.ndarray],
@@ -297,11 +288,13 @@ def initialize_optimization(
     dv_indx = optimization_size[0]
     u_indx = optimization_size[1] + dv_indx
     f_indx = optimization_size[2] + u_indx
+    z_indx = optimization_size[3] + f_indx
+    slack_indx = optimization_size[4] + z_indx
 
-    split_indx = (dv_indx, u_indx, f_indx)
+    split_indx = (dv_indx, u_indx, f_indx, z_indx, slack_indx)
 
     # Isolate optimization functions:
-    equality_fn = lambda q, M, C, tau_g, B, H, H_bias, J: equality_constraints(
+    equality_fn = lambda q, M, C, tau_g, B, H, H_bias, J, J_bias: equality_constraints(
         q,
         M,
         C,
@@ -310,6 +303,7 @@ def initialize_optimization(
         H,
         H_bias,
         J,
+        J_bias,
         split_indx,
     )
 
@@ -321,10 +315,8 @@ def initialize_optimization(
         split_indx,
     )
 
-    objective_fn = lambda q, task_jacobian, task_bias, ddx_desired: objective(
+    objective_fn = lambda q, ddx_desired: objective(
         q,
-        task_jacobian,
-        task_bias,
         ddx_desired,
         split_indx,
     )
@@ -346,16 +338,16 @@ def initialize_optimization(
 def initialize_program(
     constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
-    program: OSQP,
+    program: MathematicalProgram,
     equality_functions: Callable,
     inequality_functions: Callable,
     objective_functions: Callable,
-    optimization_size: tuple[int, int, int, int],
-) -> OSQP:
+    optimization_size: tuple[int, int, int, int, int],
+) -> tuple[MathematicalProgram, tuple[LinearConstraint, QuadraticCost]]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, z_previous = constraint_constants
     task_jacobian, task_bias, ddx_desired = objective_constants
-    dv_size, u_size, f_size, z_size = optimization_size
+    dv_size, u_size, f_size, z_size, slack_size  = optimization_size
 
     # Unpack optimization functions:
     b_eq_fn, A_eq_fn = equality_functions
@@ -363,12 +355,12 @@ def initialize_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    num_variables = dv_size + u_size + f_size + z_size
+    num_variables = dv_size + u_size + f_size + z_size + slack_size
     q = jnp.zeros((num_variables,))
 
-    # Generate Program Matricies:
-    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian)
-    b_eq = -b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian)
+    # Generate program Matricies:
+    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias)
+    b_eq = -b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias)
     A_ineq = A_ineq_fn(q, z_previous)
     ub_ineq = -b_ineq_fn(q, z_previous)
     # Last 4 constraints are the zero moment constraints:
@@ -417,58 +409,55 @@ def initialize_program(
         ],
     )
 
-    H = H_fn(q, task_jacobian, task_bias, ddx_desired)
-    f = f_fn(q, task_jacobian, task_bias, ddx_desired)
+    H = H_fn(q, ddx_desired)
+    f = f_fn(q, ddx_desired)
 
     # Convert to sparse:
-    A = sparse.csc_matrix(
-        np.vstack(
-            [A_eq, A_ineq, A_box],
-        )
+    A = np.vstack(
+        [A_eq, A_ineq, A_box],
     )
 
     lb = np.concatenate([b_eq, lb_ineq, lb_box])
     ub = np.concatenate([b_eq, ub_ineq, ub_box])
-    
-    H = sparse.csc_matrix(H)
-    f = np.asarray(f)
 
-    program.setup(
-        P=H,
-        q=f,
+    H = np.asarray(H)
+    f = np.asarray(f)
+    
+    # Drake MP:
+    opt_vars = program.NewContinuousVariables(num_variables, "q")
+
+    # Add Constraints:
+    constraint_handle = program.AddLinearConstraint(
         A=A,
-        l=lb,
-        u=ub,
-        verbose=True,
-        warm_start=True,
-        polish=True,
-        rho=1e-2,
-        max_iter=10000,
-        eps_abs=1e-4,
-        eps_rel=1e-4,
-        eps_prim_inf=1e-5,
-        eps_dual_inf=1e-5,
-        check_termination=10,
-        delta=1e-6,
-        polish_refine_iter=10,
+        lb=lb,
+        ub=ub,
+        vars=opt_vars,
     )
 
-    return program
+    # Add Objective:
+    objective_handle = program.AddQuadraticCost(
+        Q=H,
+        b=f,
+        vars=opt_vars,
+    )
+
+    return program, (constraint_handle, objective_handle)
 
 
 def update_program(
     constraint_constants: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     objective_constants: tuple[np.ndarray, np.ndarray, np.ndarray],
-    program: OSQP,
+    program: MathematicalProgram,
+    program_handles: tuple[LinearConstraint, QuadraticCost],
     equality_functions: Callable,
     inequality_functions: Callable,
     objective_functions: Callable,
-    optimization_size: tuple[int, int, int, int],
-) -> tuple[Solution, OSQP]:
+    optimization_size: tuple[int, int, int, int, int],
+) -> tuple[Solution, MathematicalProgram, tuple[LinearConstraint, QuadraticCost]]:
     # Unpack optimization constants and other variables:
     M, C, tau_g, B, H_constraint, H_bias, z_previous = constraint_constants
     task_jacobian, task_bias, ddx_desired = objective_constants
-    dv_size, u_size, f_size, z_size = optimization_size
+    dv_size, u_size, f_size, z_size, slack_size = optimization_size
 
     # Unpack optimization functions:
     b_eq_fn, A_eq_fn = equality_functions
@@ -476,12 +465,17 @@ def update_program(
     objective_fn, H_fn, f_fn = objective_functions
 
     # Initialize optimization variables for JAX:
-    num_variables = dv_size + u_size + f_size + z_size
+    num_variables = dv_size + u_size + f_size + z_size + slack_size
     q = np.zeros((num_variables,))
 
-    # Generate Program Matricies:
-    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian)
-    b_eq = -b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian)
+    # Precondition Matricies:
+    # matrix_conditioning = (task_jacobian, task_bias)
+    # conditioned_matrix = condition_matrix(matrix_conditioning)
+    # task_jacobian, task_bias = conditioned_matrix
+
+    # Generate program Matricies:
+    A_eq = A_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias)
+    b_eq = -b_eq_fn(q, M, C, tau_g, B, H_constraint, H_bias, task_jacobian, task_bias)
     A_ineq = A_ineq_fn(q, z_previous)
     ub_ineq = -b_ineq_fn(q, z_previous)
     lb_ineq = np.concatenate(
@@ -529,30 +523,33 @@ def update_program(
         ],
     )
 
-    H = H_fn(q, task_jacobian, task_bias, ddx_desired)
-    f = f_fn(q, task_jacobian, task_bias, ddx_desired)
+    H = H_fn(q, ddx_desired)
+    f = f_fn(q, ddx_desired)
 
     # Convert to sparse:
-    A = sparse.csc_matrix(
-        np.vstack(
-            [A_eq, A_ineq, A_box],
-        )
+    A = np.vstack(
+        [A_eq, A_ineq, A_box],
     )
 
     lb = np.concatenate([b_eq, lb_ineq, lb_box])
     ub = np.concatenate([b_eq, ub_ineq, ub_box])
     
-    H = sparse.csc_matrix(H)
+    H = np.asarray(H)
     f = np.asarray(f)
 
-    program.update(
-        Px=sparse.triu(H).data,
-        q=f,
-        Ax=A.data,
-        l=lb,
-        u=ub,
+    # Update program:
+    linear_constraint, quadratic_cost = program_handles
+    linear_constraint.evaluator().UpdateCoefficients(
+        new_A=A,
+        new_lb=lb,
+        new_ub=ub,
+    )
+    quadratic_cost.evaluator().UpdateCoefficients(
+        new_Q=H,
+        new_b=f,
     )
 
-    solution = program.solve()
 
-    return solution, program
+    solution = Solve(program)
+
+    return solution, program, (linear_constraint, quadratic_cost)

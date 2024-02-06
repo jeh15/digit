@@ -17,6 +17,7 @@ def equality_constraints(
     H: MX,
     H_bias: MX,
     J: MX,
+    J_bias: MX,
 ) -> MX:
     """Equality constraints for the dynamics of a system.
 
@@ -29,7 +30,7 @@ def equality_constraints(
         H: The jacobian of the kinematic constraint.
         H_bias: The bias term of the kinematic constraint.
         J: The spatial velocity jacobian.
-        z_previous: The previous solution for the f_z ground reaction forces.
+        J_bias: The bias term of the spatial velocity jacobian.
         split_indx: The index at which the optimization
             variables are split in dv and u.
 
@@ -43,25 +44,30 @@ def equality_constraints(
         H @ dv + H_bias = 0
     """
     # Split optimization variables:
-    dv_indx, u_indx, f_indx, z_indx = (34, 54, 60, 72)
+    dv_indx, u_indx, f_indx, z_indx, slack_indx = (34, 54, 60, 72, 114)
     dv = q[:dv_indx]
     u = q[dv_indx:u_indx]
     f = q[u_indx:f_indx]
     z = q[f_indx:z_indx]
+    slack = q[z_indx:slack_indx]
 
     # Extract feet jacobian:
     # [base, left_foot, right_foot, left_hand, right_hand, left_elbow, right_elbow]
     split_J = casadi.vertsplit(J, 6)
     left_foot_J, right_foot_J = split_J[1], split_J[2]
-    J = casadi.vertcat(left_foot_J, right_foot_J)
+    contact_J = casadi.vertcat(left_foot_J, right_foot_J)
 
     # Dynamic Constraints:
-    dynamics = M @ dv + C - tau_g - B @ u - H.T @ f - J.T @ z
+    dynamics = M @ dv + C - tau_g - B @ u - H.T @ f - contact_J.T @ z
 
     # Kinematic Constraints:
     kinematic = H @ dv + H_bias
 
-    equality_constraints = casadi.vertcat(dynamics, kinematic)
+    # Task Objective Slack:
+    ddx_task = J @ dv + J_bias
+    task_slack = ddx_task - slack
+
+    equality_constraints = casadi.vertcat(dynamics, kinematic, task_slack)
 
     return equality_constraints
 
@@ -82,7 +88,7 @@ def inequality_constraints(
     """
     # Calculate inequality constraints:
     # Split optimization variables:
-    dv_indx, u_indx, f_indx, z_indx = (34, 54, 60, 72)
+    dv_indx, u_indx, f_indx, z_indx, slack_indx = (34, 54, 60, 72, 114)
     z = q[f_indx:z_indx]
 
     friction = 0.6
@@ -106,13 +112,13 @@ def inequality_constraints(
     r_x = 0.05 / 2.0
     constraint_9 = z[2] - r_y * friction * z[5]
     constraint_10 = -z[2] - r_y * friction * z[5]
-    constraint_11 = z[2] - r_x * friction * z[5]
-    constraint_12 = -z[2] - r_x * friction * z[5]
+    # constraint_11 = z[2] - r_x * friction * z[5]
+    # constraint_12 = -z[2] - r_x * friction * z[5]
 
     constraint_13 = z[8] - r_y * friction * z[11]
     constraint_14 = -z[8] - r_y * friction * z[11]
-    constraint_15 = z[8] - r_x * friction * z[11]
-    constraint_16 = -z[8] - r_x * friction * z[11]
+    # constraint_15 = z[8] - r_x * friction * z[11]
+    # constraint_16 = -z[8] - r_x * friction * z[11]
 
     # Zero Moment Constraint:
     # -r_y <= tau_x / f_z <= r_y
@@ -139,12 +145,8 @@ def inequality_constraints(
         constraint_8,
         constraint_9,
         constraint_10,
-        constraint_11,
-        constraint_12,
         constraint_13,
         constraint_14,
-        constraint_15,
-        constraint_16,
         zero_moment,
     )
 
@@ -153,29 +155,23 @@ def inequality_constraints(
 
 def objective(
     q: MX,
-    task_jacobian: MX,
-    task_bias: MX,
     desired_task_acceleration: MX,
 ) -> MX:
     # Split optimization variables:
-    dv_indx, u_indx, f_indx, z_indx = (34, 54, 60, 72)
+    dv_indx, u_indx, f_indx, z_indx, slack_indx = (34, 54, 60, 72, 114)
     dv = q[:dv_indx]
-    u = q[dv_indx:u_indx]
-    f = q[u_indx:f_indx]
     z = q[f_indx:z_indx]
+    slack = q[z_indx:slack_indx]
 
     # Reshape for easier indexing:
     z = casadi.reshape(z, 2, 6)
 
-    # Calculate task objective:
-    ddx_task = task_jacobian @ dv + task_bias
-
     # Split the Task Space Jacobians:
-    split_ddx_task = casadi.vertsplit(ddx_task, 6)
-    ddx_base = split_ddx_task[0]
-    ddx_left_foot, ddx_right_foot = split_ddx_task[1], split_ddx_task[2]
-    ddx_left_hand, ddx_right_hand = split_ddx_task[3], split_ddx_task[4]
-    ddx_left_elbow, ddx_right_elbow = split_ddx_task[5], split_ddx_task[6]
+    split_slack = casadi.vertsplit(slack, 6)
+    ddx_base = split_slack[0]
+    ddx_left_foot, ddx_right_foot = split_slack[1], split_slack[2]
+    ddx_left_hand, ddx_right_hand = split_slack[3], split_slack[4]
+    ddx_left_elbow, ddx_right_elbow = split_slack[5], split_slack[6]
 
     split_desired = casadi.vertsplit(desired_task_acceleration, 6)
     desired_base = split_desired[0]
@@ -235,47 +231,15 @@ def objective(
         + casadi.sum1(right_arm_dv ** 2)
     )
 
-    # Arm Control:
-    left_arm_control = casadi.sum1(u[6:10] ** 2)
-    right_arm_control = casadi.sum1(u[16:20] ** 2)
-    arm_control_objective = left_arm_control + right_arm_control
-
-    # Regularization:
-    acceleration_objective = casadi.sum1(dv ** 2)
-    control_objective = casadi.sum1(u ** 2)
-    constraint_objective = casadi.sum1(f ** 2)
-    x_translational_ground_reaction_objective = casadi.sum1(z[:, 3] ** 2)
-    y_translational_ground_reaction_objective = casadi.sum1(z[:, 4] ** 2)
-    z_translational_ground_reaction_objective = casadi.sum1(z[:, 5] ** 2)
-    x_rotational_ground_reaction_objective = casadi.sum1(z[:, 0] ** 2)
-    y_rotational_ground_reaction_objective = casadi.sum1(z[:, 1] ** 2)
-    z_rotational_ground_reaction_objective = casadi.sum1(z[:, 2] ** 2)
+    regularization_objective = casadi.sum1(q ** 2)
 
     task_weight = 1.0
-    control_weight = 0.0
-    constraint_weight = 0.0
-    x_translational_ground_reaction_weight = 0.0
-    y_translational_ground_reaction_weight = 0.0
-    z_translational_ground_reaction_weight = 0.0
-    x_rotational_ground_reaction_weight = 0.0
-    y_rotational_ground_reaction_weight = 0.0
-    z_rotational_ground_reaction_weight = 0.0
     arm_movement_weight = 1.0
-    arm_control_objective_weight = 0.0
-    acceleration_weight = 0.0
+    regularization_weight = 1e-4
     objective_value = (
         task_weight * task_objective
-        + control_weight * control_objective
-        + constraint_weight * constraint_objective
-        + x_translational_ground_reaction_weight * x_translational_ground_reaction_objective
-        + y_translational_ground_reaction_weight * y_translational_ground_reaction_objective
-        + z_translational_ground_reaction_weight * z_translational_ground_reaction_objective
-        + x_rotational_ground_reaction_weight * x_rotational_ground_reaction_objective
-        + y_rotational_ground_reaction_weight * y_rotational_ground_reaction_objective
-        + z_rotational_ground_reaction_weight * z_rotational_ground_reaction_objective
         + arm_movement_weight * arm_movement
-        + arm_control_objective_weight * arm_control_objective
-        + acceleration_weight * acceleration_objective
+        + regularization_weight * regularization_objective
     )
 
     return objective_value
@@ -286,6 +250,7 @@ def main(argv=None):
     u_size = 20
     f_size = 6
     z_size = 12
+    slack_size = 42
     spatial_vector_size = 6
     num_task_frames = 7
 
@@ -293,15 +258,17 @@ def main(argv=None):
     u_indx = dv_indx + u_size
     f_indx = u_indx + f_size
     z_indx = f_indx + z_size
-    split_indx = (dv_indx, u_indx, f_indx, z_indx)
+    slack_indx = z_indx + slack_size
+    split_indx = (dv_indx, u_indx, f_indx, z_indx, slack_indx)
 
     # Define symbolic variables:
     dv = casadi.MX.sym("dv", dv_size)
     u = casadi.MX.sym("u", u_size)
     f = casadi.MX.sym("f", f_size)
     z = casadi.MX.sym("z", z_size)
+    slack = casadi.MX.sym("slack", slack_size)
 
-    design_vector = casadi.vertcat(dv, u, f, z)
+    design_vector = casadi.vertcat(dv, u, f, z, slack)
 
     M_matrix = casadi.MX.sym("M", dv_size, dv_size)
     C_matrix = casadi.MX.sym("C", dv_size)
@@ -310,7 +277,7 @@ def main(argv=None):
     H_matrix = casadi.MX.sym("H", f_size, dv_size)
     H_bias_vector = casadi.MX.sym("H_bias", f_size)
     J_matrix = casadi.MX.sym("J", spatial_vector_size * num_task_frames, dv_size)
-    task_bias_matrix = casadi.MX.sym("task_bias", spatial_vector_size * num_task_frames)
+    J_bias_matrix = casadi.MX.sym("task_bias", spatial_vector_size * num_task_frames)
     ground_reaction_matrix = casadi.MX.sym("z_previous", 2)
     desired_task_acceleration_matrix = casadi.MX.sym("desired_ddx", spatial_vector_size * num_task_frames)
 
@@ -323,6 +290,7 @@ def main(argv=None):
         H_matrix,
         H_bias_vector,
         J_matrix,
+        J_bias_matrix,
     ]
 
     inequality_constraint_input = [
@@ -332,8 +300,6 @@ def main(argv=None):
 
     objective_input = [
         design_vector,
-        J_matrix,
-        task_bias_matrix,
         desired_task_acceleration_matrix,
     ]
 

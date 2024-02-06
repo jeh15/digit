@@ -60,11 +60,15 @@ def make_trajectory_value():
 
 
 class TrajectorySystem(LeafSystem):
-    def __init__(self, plant: MultibodyPlant):
+    def __init__(
+        self,
+        plant: MultibodyPlant,
+        update_rate: float = 1.0 / 1000.0,
+    ):
         super().__init__()
         self.plant = plant
 
-        self.update_rate = 1.0 / 1000.0
+        self.update_rate = update_rate
         self.index = 0
 
         # Abstract States: Trajectories
