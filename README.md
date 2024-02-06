@@ -11,4 +11,6 @@ source env/bin/activate
 pip install --upgrade pip
 pip install drake
 pip install numpy
+pip install casadi
+pip install absl-py
 ```
