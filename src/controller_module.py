@@ -19,19 +19,6 @@ from context_utilities import make_context_wrapper_value
 from digit_utilities import DigitUtilities
 from trajectory_module import make_trajectory_wrapper_value
 
-significant_bits = 8.0
-eps = np.finfo(np.float64).eps
-
-
-def condition_matrix(matrices):
-    condition_matrix = []
-    for matrix in matrices:
-        matrix = np.asarray(matrix)
-        matrix = np.where(np.abs(matrix) < significant_bits * eps, 0.0, matrix)
-        condition_matrix.append(matrix)
-
-    return tuple(condition_matrix)
-
 
 class OSC(LeafSystem):
     def __init__(
