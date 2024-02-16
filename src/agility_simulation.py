@@ -13,7 +13,10 @@ from pydrake.multibody.plant import (
 )
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
-from pydrake.systems.primitives import ConstantVectorSource
+from pydrake.systems.primitives import (
+    ConstantVectorSource,
+    ConstantValueSource,
+)
 
 # Utility Imports:
 import model_utilities
@@ -24,6 +27,7 @@ import controller_module
 import taskspace_module
 import trajectory_module
 import agility_module
+import websocket_module
 
 # Digit API:
 import digit_api
@@ -150,19 +154,17 @@ def main(argv=None):
     )
     agility_publisher = builder.AddSystem(driver_agility_publisher)
 
-    # Connect Systems:
-    # Connect Vector Source to Digit's Actuators:
-    # actuation_vector = np.zeros(
-    #     plant.num_actuators(),
-    #     dtype=np.float64,
-    # )
-    # actuation_source = builder.AddSystem(
-    #     ConstantVectorSource(actuation_vector),
-    # )
-    # builder.Connect(
-    #     actuation_source.get_output_port(),
-    #     plant.get_actuation_input_port(),
-    # )
+    driver_message_handler = websocket_module.MessageHandler(
+        num_messengers=1,
+    )
+    message_handler = builder.AddSystem(driver_message_handler)
+
+    driver_websocket = websocket_module.WebsocketModule(
+        ip_address="localhost",
+        port=8080,
+        update_rate=update_rate,
+    )
+    websocket = builder.AddSystem(driver_websocket)
 
     # Context System -> OSC Controller:
     builder.Connect(
@@ -224,6 +226,22 @@ def main(argv=None):
         osc_controller.get_input_port(driver_osc_controller.task_bias_port),
     )
 
+    # Message Handler -> Websocket:
+    builder.Connect(
+        message_handler.get_output_port(driver_message_handler.message_port),
+        websocket.get_input_port(driver_websocket.message_port),
+    )
+
+    # Message Publisher (Other modules will send messages):
+    driver_message_publisher = websocket_module.MessagePublisher()
+    message_publisher = builder.AddSystem(
+        driver_message_publisher,
+    )
+    builder.Connect(
+        message_publisher.get_output_port(),
+        message_handler.get_input_port(driver_message_handler.input_ports[0]),
+    )
+
     # Build diagram:
     diagram = builder.Build()
 
@@ -254,8 +272,13 @@ def main(argv=None):
 
     simulator.Initialize()
 
+    # Soft start:
+    soft_start_time = 5.0
+    simulator.AdvanceTo(soft_start_time)
+
     # Advance simulation:
-    target_time = 35.0
+    target_time = soft_start_time + 0.1
+    driver_message_publisher.message = 'shutdown'
     simulator.AdvanceTo(target_time)
 
 

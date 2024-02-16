@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 import json
-import time
 
 from ws4py.client.threadedclient import WebSocketClient
 
 from pydrake.common.value import AbstractValue
 from pydrake.systems.framework import (
     LeafSystem,
-    Context,
+    PublishEvent,
+    TriggerType,
 )
 
 
@@ -21,6 +21,8 @@ def make_message_wrapper_value(message: str):
 
 
 class BasicClient(WebSocketClient):
+    operation_mode = None
+
     def opened(self):
         self.operation_mode = None
         self.responded = True
@@ -31,8 +33,6 @@ class BasicClient(WebSocketClient):
         ]
         self.send(json.dumps(privilege_request))
 
-        self.llapi_enabled = False
-
     def closed(self, code, reason):
         print(("Closed", code, reason))
 
@@ -40,6 +40,8 @@ class BasicClient(WebSocketClient):
         dataloaded = json.loads(m.data)
         message_type = str(dataloaded[0])
         message_dict = dataloaded[1]
+
+        self.data = dataloaded
 
         if message_type == "privileges":
             self.done = message_dict["privileges"][0]["has"]
@@ -54,60 +56,26 @@ class BasicClient(WebSocketClient):
 
         if message_type == "error":
             self.error_info = str(message_dict["info"])
-
             print(("Error: ", self.error_info))
 
         if message_type == "action-status-changed":
             self.status_change_mode = str(message_dict["status"])
 
             if self.status_change_mode == "success":
-                self.llapi_enabled = True
-
                 print(
                     (
-                        "action-status-changed to low-level-api: ",
+                        "action-status-changed",
                         self.status_change_mode,
                     )
                 )
                 print("Transition successful")
             if self.status_change_mode == "failure":
-                self.llapi_enabled = False
-
                 print(
                     (
-                        "action-status-changed to low-level-api: ",
+                        "action-status-changed: ",
                         self.status_change_mode,
                     )
                 )
-                print(
-                    "Cannot transition to low-level-api operation mode if no low-level commands are present"
-                )
-                time.sleep(1)
-
-
-request_robot_status = ["get-robot-status", {}, 3]
-
-privilege_request = [
-    "request-privilege",
-    {"privilege": "change-action-command", "priority": 0},
-]
-
-request_lowlevelapi = [
-    "action-set-operation-mode",
-    {"mode": "low-level-api"},
-    1,
-]
-
-request_lowlevelapi_off = [
-    "action-set-operation-mode",
-    {"mode": "locomotion"},
-    2,
-]
-
-request_shutoff = [
-    "action-set-operation-mode",
-    {"mode": "damping"},
-]
 
 
 class WebsocketModule(LeafSystem):
@@ -117,14 +85,36 @@ class WebsocketModule(LeafSystem):
 
         Methods:
             initialize low level api and send out message when it has been initialized.
-            switchs locomotion mode when safety controller reports and error.
+            switchs locomotion mode when safety controller reports an error.
 
     """
-    def __init__(self, ip_address: str, port: int):
+    def __init__(self, ip_address: str, port: int, update_rate: float = 1e-4):
         super().__init__()
         socket_address = f'ws://{ip_address}:{port}/'
         self.ws = BasicClient(socket_address, protocols=["json-v1-agility"])
         self.message = ''
+        self.update_rate = update_rate
+
+        # Message to requests:
+        self.request_robot_status = ["get-robot-status", {}, 3]
+        self.privilege_request = [
+            "request-privilege",
+            {"privilege": "change-action-command", "priority": 0},
+        ]
+        self.request_lowlevelapi = [
+            "action-set-operation-mode",
+            {"mode": "low-level-api"},
+            1,
+        ]
+        self.request_lowlevelapi_off = [
+            "action-set-operation-mode",
+            {"mode": "locomotion"},
+            2,
+        ]
+        self.request_shutdown = [
+            "action-set-operation-mode",
+            {"mode": "damping"},
+        ]
 
         # Input Port: Message
         self.message_port = self.DeclareAbstractInputPort(
@@ -132,26 +122,43 @@ class WebsocketModule(LeafSystem):
             make_message_wrapper_value(self.message),
         ).get_index()
 
-        # self.operation_port = self.DeclareAbstractOutputPort(
-        #     "plant_context",
-        #     alloc=lambda: make_context_wrapper_value(plant),
-        #     calc=calc_context,
-        # ).get_index()
+        def on_initialization(context, event):
+            self.ws.connect()
+            # Initialize Robot Status:
+            self.ws.send(json.dumps(self.request_robot_status))
+
+        self.DeclareInitializationEvent(
+            event=PublishEvent(
+                trigger_type=TriggerType.kInitialization,
+                callback=on_initialization,
+            ),
+        )
 
         def on_periodic(context, event):
-            self.message = self.get_input_port(
-                self.message_port,
-            ).Eval(context).message
+            self.message = (
+                self.get_input_port(
+                    self.message_port,
+                )
+                .Eval(context)
+                .get_value()
+                .message
+            )
 
-            if (
-                self.message == 'low-level-api' and
-                self.ws.operation_mode != 'low-level-api'
-            ):
-                ws.send(json.dumps(request_lowlevelapi))
+            # If not in damping mode, send message to websocket server:
+            if self.ws.operation_mode != 'damping':
+                # If message is not empty, send message to websocket server:
+                if self.message:
+                    if (
+                        self.message == 'low-level-api' and
+                        self.ws.operation_mode != 'low-level-api'
+                    ):
+                        self.ws.send(json.dumps(self.request_lowlevelapi))
 
-            if self.message == 'shutoff':
-                ws.send(json.dumps(request_shutoff))
+                    if self.message == 'shutdown':
+                        self.ws.send(json.dumps(self.request_shutdown))
 
+            # Send robot status request:
+            self.ws.send(json.dumps(self.request_robot_status))
 
         self.DeclarePeriodicEvent(
             period_sec=self.update_rate,
@@ -184,22 +191,23 @@ class MessageHandler(LeafSystem):
             messages = []
             for input_port in self.input_ports:
                 messages.append(
-                    input_port
+                    self.get_input_port(input_port)
                     .Eval(context)
+                    .get_value()
                     .message
                 )
 
             # Handle Message:
-            if 'shutoff' in messages:
-                output.set_mutable_value(
-                    make_message_wrapper_value('shutoff')
+            if 'shutdown' in messages:
+                output.set_value(
+                    make_message_wrapper_value('shutdown')
                 )
             elif 'low-level-api' in messages:
-                output.set_mutable_value(
+                output.set_value(
                     make_message_wrapper_value('low-level-api')
                 )
             else:
-                output.set_mutable_value(
+                output.set_value(
                     make_message_wrapper_value('')
                 )
 
@@ -210,7 +218,21 @@ class MessageHandler(LeafSystem):
         ).get_index()
 
 
+class MessagePublisher(LeafSystem):
+    def __init__(self):
+        super().__init__()
+        self.message = ''
 
+        def publish_message(context, output):
+            output.set_value(
+                make_message_wrapper_value(self.message)
+            )
+
+        self.message_port = self.DeclareAbstractOutputPort(
+            "message",
+            alloc=lambda: make_message_wrapper_value(self.message),
+            calc=publish_message,
+        ).get_index()
 
 
 if __name__ == "__main__":
@@ -218,4 +240,4 @@ if __name__ == "__main__":
     ws.connect()
 
     ws.send(json.dumps(request_robot_status))
-    ws.send(json.dumps(request_shutoff))
+    ws.send(json.dumps(request_shutdown))
