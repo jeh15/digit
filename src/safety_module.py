@@ -13,7 +13,7 @@ from pydrake.multibody.plant import MultibodyPlant
 from digit_utilities import DigitUtilities
 from context_utilities import make_context_wrapper_value
 from controller_module import make_solution_wrapper_value, SolutionWrapper
-from websocket_module import make_message_wrapper_value
+from websocket_module import make_message_wrapper_value, MessageWrapper
 
 
 @dataclass
@@ -39,9 +39,13 @@ class SafetyController(LeafSystem):
         self.plant = plant
         self.update_rate = update_rate
 
+        # TODO(jeh15) This needs be taken out. Make a dedicated low-level-api trigger:
+        self.warmup_time = 1.0
+
         # Store Plant and Create Context:
         self.plant = plant
         self.plant_context = self.plant.CreateDefaultContext()
+        self.num_actuators = self.plant.num_actuators()
 
         # Digit Convinience Functions:
         self.digit_idx = digit_idx
@@ -68,15 +72,15 @@ class SafetyController(LeafSystem):
 
         # Output Port: Controller Command
         self.command_port = self.DeclareAbstractOutputPort(
-            "command",
-            alloc=make_command_wrapper_value(CommandWrapper()),
+            name="command",
+            alloc=lambda: make_command_wrapper_value(CommandWrapper()),
             calc=self.command_output_callback,
         ).get_index()
 
         # Output Port: Safety Status
-        self.status_port = self.DeclareAbstractOutputPort(
+        self.message_port = self.DeclareAbstractOutputPort(
             "message",
-            alloc=make_message_wrapper_value(self.message),
+            alloc=lambda: make_message_wrapper_value(''),
             calc=self.message_output_callback,
         ).get_index()
 
@@ -97,41 +101,41 @@ class SafetyController(LeafSystem):
         command_state = context.get_mutable_abstract_state(
             self.command_state,
         )
-        command = command_state.get_mutable_value().get_value()
+        command = command_state.get_value()
         output.set_value(
-            make_command_wrapper_value(command)
+            command
         )
 
     def message_output_callback(self, context, output):
         message_state = context.get_mutable_abstract_state(
             self.message_state,
         )
-        message = message_state.get_mutable_value().get_value()
+        message = message_state.get_value()
         output.set_value(
-            make_message_wrapper_value(message)
+            message
         )
 
     def update(self, context, event):
         # Get inputs:
         plant_context = self.get_input_port(
             self.plant_context_port,
-        ).Eval(context)
+        ).Eval(context).context
 
         solution = self.get_input_port(
             self.solution_port,
-        ).Eval(context).get_value()
+        ).Eval(context)
 
         # Get Desired Torques:
         leg_torques = np.concatenate(
             [
-                solution.torque[digit_idx.actuation_idx['left_leg']],
-                solution.torque[digit_idx.actuation_idx['right_leg']],
+                solution.torque[self.digit_idx.actuation_idx['left_leg']],
+                solution.torque[self.digit_idx.actuation_idx['right_leg']],
             ]
         )
         arm_torques = np.concatenate(
             [
-                solution.torque[digit_idx.actuation_idx['left_arm']],
-                solution.torque[digit_idx.actuation_idx['right_arm']],
+                solution.torque[self.digit_idx.actuation_idx['left_arm']],
+                solution.torque[self.digit_idx.actuation_idx['right_arm']],
             ]
         )
 
@@ -150,25 +154,30 @@ class SafetyController(LeafSystem):
             dtype=np.float64,
         )
         arm_torque_limit = np.array(
-            [35, 35, 35, 35, 35, 35],
+            [35, 35, 35, 35],
             dtype=np.float64,
         )
 
         # Check joint limits:
         message = ''
-        if np.any(q < q_min) or np.any(q > q_max):
-            print('Joint Limit Exceeded')
-            message = 'shutdown'
 
-        if np.any(np.abs(qd) > qd_lim):
-            print('Velocity Limit Exceeded')
-            message = 'shutdown'
+        # TODO(jeh15) This needs be taken out. Make a dedicated low-level-api trigger:
+        if context.get_time() > self.warmup_time and context.get_time() < self.warmup_time + 0.1:
+            message = 'low-level-api'
 
-        if np.any(np.abs(leg_torques) > leg_torque_limit):
+        # if np.any(q < q_min) or np.any(q > q_max):
+        #     print('Joint Limit Exceeded')
+        #     message = 'shutdown'
+
+        # if np.any(np.abs(qd) > qd_lim):
+        #     print('Velocity Limit Exceeded')
+        #     message = 'shutdown'
+
+        if np.any(np.abs(leg_torques) > np.tile(leg_torque_limit, 2)):
             print('Leg Torque Limit Exceeded')
             message = 'shutdown'
 
-        if np.any(np.abs(arm_torques) > arm_torque_limit):
+        if np.any(np.abs(arm_torques) > np.tile(arm_torque_limit, 2)):
             print('Arm Torque Limit Exceeded')
             message = 'shutdown'
 
@@ -178,8 +187,8 @@ class SafetyController(LeafSystem):
         else:
             command = CommandWrapper(
                 torque_command=solution.torque,
-                velocity_command=np.zeros(20),
-                damping_command=0.75 * np.ones(20),
+                velocity_command=np.zeros((self.num_actuators,)),
+                damping_command=0.75 * np.ones((self.num_actuators,)),
                 fallback_opmode=0,
             )
 
@@ -188,11 +197,11 @@ class SafetyController(LeafSystem):
             self.command_state,
         )
         command_state.set_value(
-            make_command_wrapper_value(command)
+            command
         )
         message_state = context.get_mutable_abstract_state(
             self.message_state,
         )
         message_state.set_value(
-            make_message_wrapper_value(message)
+            MessageWrapper(message)
         )

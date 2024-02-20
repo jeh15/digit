@@ -64,12 +64,15 @@ class TrajectorySystem(LeafSystem):
         self,
         plant: MultibodyPlant,
         update_rate: float = 1.0 / 1000.0,
+        warmup_time: float = 1.0,
     ):
         super().__init__()
         self.plant = plant
 
         self.update_rate = update_rate
         self.index = 0
+
+        self.warmup_time = warmup_time
 
         # Abstract States: Trajectories
         self.base_index = self.DeclareAbstractState(
@@ -123,7 +126,8 @@ class TrajectorySystem(LeafSystem):
 
         # Declare Periodic Event: Update Trajectory Output
         def on_periodic(context, event):
-            self.update(context, event)
+            if context.get_time() > self.warmup_time:
+                self.update(context, event)
 
         self.DeclarePeriodicEvent(
             period_sec=self.update_rate,

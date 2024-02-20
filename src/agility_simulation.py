@@ -3,7 +3,6 @@ from absl import app
 
 import numpy as np
 from pydrake.geometry import (
-    MeshcatVisualizer,
     Meshcat,
 )
 from pydrake.multibody.parsing import Parser
@@ -13,10 +12,6 @@ from pydrake.multibody.plant import (
 )
 from pydrake.systems.analysis import Simulator
 from pydrake.systems.framework import DiagramBuilder
-from pydrake.systems.primitives import (
-    ConstantVectorSource,
-    ConstantValueSource,
-)
 
 # Utility Imports:
 import model_utilities
@@ -28,6 +23,7 @@ import taskspace_module
 import trajectory_module
 import agility_module
 import websocket_module
+import safety_module
 
 # Digit API:
 import digit_api
@@ -166,6 +162,13 @@ def main(argv=None):
     )
     websocket = builder.AddSystem(driver_websocket)
 
+    driver_safety_controller = safety_module.SafetyController(
+        plant=plant,
+        digit_idx=digit_idx,
+        update_rate=update_rate,
+    )
+    safety_controller = builder.AddSystem(driver_safety_controller)
+
     # Context System -> OSC Controller:
     builder.Connect(
         context_system.get_output_port(driver_context_system.plant_context_port),
@@ -184,10 +187,16 @@ def main(argv=None):
         taskspace_projection.get_input_port(driver_taskspace_projection.plant_context_port),
     )
 
-    # OSC Controller -> Agility Publisher:
+    # Context System -> Safety Controller:
     builder.Connect(
-        osc_controller.get_output_port(driver_osc_controller.torque_port),
-        agility_publisher.get_input_port(driver_agility_publisher.torque_port),
+        context_system.get_output_port(driver_context_system.plant_context_port),
+        safety_controller.get_input_port(driver_safety_controller.plant_context_port),
+    )
+
+    # OSC Controller -> Safety Controller:
+    builder.Connect(
+        osc_controller.get_output_port(driver_osc_controller.solution_port),
+        safety_controller.get_input_port(driver_safety_controller.solution_port),
     )
 
     # PID Controller -> OSC Controller:
@@ -232,14 +241,16 @@ def main(argv=None):
         websocket.get_input_port(driver_websocket.message_port),
     )
 
-    # Message Publisher (Other modules will send messages):
-    driver_message_publisher = websocket_module.MessagePublisher()
-    message_publisher = builder.AddSystem(
-        driver_message_publisher,
-    )
+    # Safety Controller -> Message Handler:
     builder.Connect(
-        message_publisher.get_output_port(),
+        safety_controller.get_output_port(driver_safety_controller.message_port),
         message_handler.get_input_port(driver_message_handler.input_ports[0]),
+    )
+
+    # Safety Controller -> Agility Publisher:
+    builder.Connect(
+        safety_controller.get_output_port(driver_safety_controller.command_port),
+        agility_publisher.get_input_port(driver_agility_publisher.command_port),
     )
 
     # Build diagram:
@@ -273,13 +284,12 @@ def main(argv=None):
     simulator.Initialize()
 
     # Soft start:
-    soft_start_time = 5.0
+    soft_start_time = 15.0
     simulator.AdvanceTo(soft_start_time)
 
     # Advance simulation:
-    target_time = soft_start_time + 0.1
-    driver_message_publisher.message = 'shutdown'
-    simulator.AdvanceTo(target_time)
+    # target_time = soft_start_time + 10.0
+    # simulator.AdvanceTo(target_time)
 
 
 if __name__ == "__main__":

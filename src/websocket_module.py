@@ -140,7 +140,6 @@ class WebsocketModule(LeafSystem):
                     self.message_port,
                 )
                 .Eval(context)
-                .get_value()
                 .message
             )
 
@@ -193,22 +192,21 @@ class MessageHandler(LeafSystem):
                 messages.append(
                     self.get_input_port(input_port)
                     .Eval(context)
-                    .get_value()
                     .message
                 )
 
             # Handle Message:
             if 'shutdown' in messages:
                 output.set_value(
-                    make_message_wrapper_value('shutdown')
+                    MessageWrapper('shutdown'),
                 )
             elif 'low-level-api' in messages:
                 output.set_value(
-                    make_message_wrapper_value('low-level-api')
+                    MessageWrapper('low-level-api'),
                 )
             else:
                 output.set_value(
-                    make_message_wrapper_value('')
+                    MessageWrapper(''),
                 )
 
         self.message_port = self.DeclareAbstractOutputPort(
@@ -225,7 +223,7 @@ class MessagePublisher(LeafSystem):
 
         def publish_message(context, output):
             output.set_value(
-                make_message_wrapper_value(self.message)
+                MessageWrapper(self.message),
             )
 
         self.message_port = self.DeclareAbstractOutputPort(

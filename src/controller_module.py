@@ -141,9 +141,9 @@ class OSC(LeafSystem):
         solution_state = context.get_mutable_abstract_state(
             self.solution_index,
         )
-        solution = solution_state.get_mutable_value().get_value()
+        solution = solution_state.get_value()
         output.set_value(
-            make_solution_wrapper_value(solution)
+            solution,
         )
 
     def initialize(self, context, event):
@@ -340,7 +340,7 @@ class OSC(LeafSystem):
             self.solution_index,
         )
         solution_state.set_value(
-            make_solution_wrapper_value(solution_wrapper)
+            solution_wrapper,
         )
 
     def calculate_dynamics(

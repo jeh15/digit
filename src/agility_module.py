@@ -72,7 +72,7 @@ class AgilityPublisher(LeafSystem):
 
         # Update Rate:
         self.update_rate = update_rate
-        
+
         # Input Port: Command Struct
         self.command_port = self.DeclareAbstractInputPort(
             "command",
@@ -94,15 +94,16 @@ class AgilityPublisher(LeafSystem):
 
     def update(self, context, event):
         # Get input:
-        torque = self.get_input_port(
-            self.torque_port,
+        command = self.get_input_port(
+            self.command_port,
         ).Eval(context)
 
-        torque_command = self.digit_idx.actuation_map(torque)
-        velocity_command = np.zeros((self.num_actuators,))
-        damping_command = 0.75 * np.ones((self.num_actuators),)
+        torque_command = self.digit_idx.actuation_map(command.torque_command)
+        velocity_command = command.velocity_command
+        damping_command = command.damping_command
+        fallback_opmode = command.fallback_opmode
         command = np.array([torque_command, velocity_command, damping_command]).T
         # Disabled = 0,
         # Damping = 1,
         # Locomotion = 2,
-        digit_api.send_command(command, 0, True)
+        digit_api.send_command(command, fallback_opmode, True)
