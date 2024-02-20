@@ -1,6 +1,8 @@
+from dataclasses import dataclass, field
+
 import numpy as np
 
-from pydrake.common.value import Value
+from pydrake.common.value import Value, AbstractValue
 from pydrake.common.eigen_geometry import Quaternion
 from pydrake.systems.framework import (
     BasicVector,
@@ -18,6 +20,19 @@ import model_utilities
 from context_utilities import make_context_wrapper_value
 from digit_utilities import DigitUtilities
 from trajectory_module import make_trajectory_wrapper_value
+
+
+@dataclass
+class SolutionWrapper:
+    accelerations: np.ndarray = field(default_factory=lambda: np.zeros(34))
+    torque: np.ndarray = field(default_factory=lambda: np.zeros(20))
+    constraint_force: np.ndarray = field(default_factory=lambda: np.zeros(6))
+    reaction_force: np.ndarray = field(default_factory=lambda: np.zeros(12))
+    slack_variable: np.ndarray = field(default_factory=lambda: np.zeros(42))
+
+
+def make_solution_wrapper_value(solution: SolutionWrapper):
+    return AbstractValue.Make(solution)
 
 
 class OSC(LeafSystem):
@@ -62,6 +77,9 @@ class OSC(LeafSystem):
         self.reaction_force_index = self.DeclareAbstractState(
             Value[BasicVector](self.reaction_force_size)
         )
+        self.solution_index = self.DeclareAbstractState(
+            make_solution_wrapper_value(SolutionWrapper()),
+        )
 
         # Input Port: Task Space Matrices and Desired Acceleration
         self.task_jacobian_port = self.DeclareVectorInputPort(
@@ -80,11 +98,11 @@ class OSC(LeafSystem):
             make_context_wrapper_value(self.plant),
         ).get_index()
 
-        # Output Port: OSC Torque Solution
-        self.torque_port = self.DeclareVectorOutputPort(
-            "torque",
-            BasicVector(self.torque_size),
-            self.output_callback,
+        # Output Port: OSC Solution
+        self.solution_port = self.DeclareAbstractOutputPort(
+            "message",
+            alloc=lambda: make_solution_wrapper_value(SolutionWrapper()),
+            calc=self.output_callback,
         ).get_index()
 
         # Convenience Variables:
@@ -120,11 +138,13 @@ class OSC(LeafSystem):
 
     def output_callback(self, context, output):
         # Get Abstract States:
-        torque_state = context.get_mutable_abstract_state(
-            self.torque_index,
+        solution_state = context.get_mutable_abstract_state(
+            self.solution_index,
         )
-        torque = torque_state.get_mutable_value().get_value()
-        output.SetFromVector(torque)
+        solution = solution_state.get_mutable_value().get_value()
+        output.set_value(
+            make_solution_wrapper_value(solution)
+        )
 
     def initialize(self, context, event):
         # Initialize Static Parameters:
@@ -291,7 +311,7 @@ class OSC(LeafSystem):
         reaction_force = x_solution[self.f_indx:self.z_indx]
         slack_variable = x_solution[self.z_indx:self.slack_indx]
 
-        # Update Abstract States:
+        # Update Abstract States: (Not needed anymore... Refactor this out)
         accelerations_state = context.get_mutable_abstract_state(
             self.acceleration_index,
         )
@@ -308,6 +328,20 @@ class OSC(LeafSystem):
             self.reaction_force_index,
         )
         reaction_force_state.set_value(reaction_force)
+
+        solution_wrapper = SolutionWrapper(
+            accelerations=accelerations,
+            torque=torque,
+            constraint_force=constraint_force,
+            reaction_force=reaction_force,
+            slack_variable=slack_variable,
+        )
+        solution_state = context.get_mutable_abstract_state(
+            self.solution_index,
+        )
+        solution_state.set_value(
+            make_solution_wrapper_value(solution_wrapper)
+        )
 
     def calculate_dynamics(
         self,

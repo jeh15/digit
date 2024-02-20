@@ -10,6 +10,7 @@ from pydrake.multibody.plant import MultibodyPlant
 import digit_api
 from digit_utilities import DigitUtilities
 from context_utilities import make_context_wrapper_value
+from safety_module import make_command_wrapper_value, CommandWrapper
 
 
 class AgilityContextSystem(LeafSystem):
@@ -71,10 +72,11 @@ class AgilityPublisher(LeafSystem):
 
         # Update Rate:
         self.update_rate = update_rate
-
-        # Input Port:
-        self.torque_port = self.DeclareVectorInputPort(
-            "torque", self.num_actuators,
+        
+        # Input Port: Command Struct
+        self.command_port = self.DeclareAbstractInputPort(
+            "command",
+            make_command_wrapper_value(CommandWrapper()),
         ).get_index()
 
         # Declare Periodic Event: Solve Optimization
@@ -100,4 +102,7 @@ class AgilityPublisher(LeafSystem):
         velocity_command = np.zeros((self.num_actuators,))
         damping_command = 0.75 * np.ones((self.num_actuators),)
         command = np.array([torque_command, velocity_command, damping_command]).T
+        # Disabled = 0,
+        # Damping = 1,
+        # Locomotion = 2,
         digit_api.send_command(command, 0, True)

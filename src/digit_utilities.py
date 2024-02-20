@@ -153,64 +153,11 @@ class DigitUtilities():
             }
 
             # Control Input Mapping:
-            # gain_1 = 1.0
-            # gain_2 = 1.0
-            # gain_3 = 1.0 / 3.0
             gain_1 = 1.0 / 2.0
             gain_2 = 1.0 / (1.0 * 50.0)
             gain_3 = 1.0 / (3.0 * 50.0)
             self.control_matrix = np.zeros((self.num_joints, self.num_motors))
             self.control_matrix[actuated_joints_idx, actuation_idx] = 1.0
-
-            # Manual Gear Ratio:
-            # self.control_matrix[
-            #     self.left_hip_roll["joint_idx"], self.left_hip_roll["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.left_hip_yaw["joint_idx"], self.left_hip_yaw["actuation_idx"]
-            # ] = 1.0 / 50.0
-            # self.control_matrix[
-            #     self.left_hip_pitch["joint_idx"], self.left_hip_pitch["actuation_idx"]
-            # ] = 1.0 / 16.0
-            # self.control_matrix[
-            #     self.left_knee["joint_idx"], self.left_knee["actuation_idx"]
-            # ] = 1.0 / 16.0
-            # self.control_matrix[
-            #     self.left_shoulder_roll["joint_idx"], self.left_shoulder_roll["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.left_shoulder_pitch["joint_idx"], self.left_shoulder_pitch["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.left_shoulder_yaw["joint_idx"], self.left_shoulder_yaw["actuation_idx"]
-            # ] = 1.0 / 50.0
-            # self.control_matrix[
-            #     self.left_elbow["joint_idx"], self.left_elbow["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.right_hip_roll["joint_idx"], self.right_hip_roll["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.right_hip_yaw["joint_idx"], self.right_hip_yaw["actuation_idx"]
-            # ] = 1.0 / 50.0
-            # self.control_matrix[
-            #     self.right_hip_pitch["joint_idx"], self.right_hip_pitch["actuation_idx"]
-            # ] = 1.0 / 16.0
-            # self.control_matrix[
-            #     self.right_knee["joint_idx"], self.right_knee["actuation_idx"]
-            # ] = 1.0 / 16.0
-            # self.control_matrix[
-            #     self.right_shoulder_roll["joint_idx"], self.right_shoulder_roll["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.right_shoulder_pitch["joint_idx"], self.right_shoulder_pitch["actuation_idx"]
-            # ] = 1.0 / 80.0
-            # self.control_matrix[
-            #     self.right_shoulder_yaw["joint_idx"], self.right_shoulder_yaw["actuation_idx"]
-            # ] = 1.0 / 50.0
-            # self.control_matrix[
-            #     self.right_elbow["joint_idx"], self.right_elbow["actuation_idx"]
-            # ] = 1.0 / 80.0
 
             # Toe Motor Mappings:
             self.control_matrix[
