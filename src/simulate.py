@@ -26,6 +26,7 @@ import controller_module
 import taskspace_module
 import trajectory_module
 import context_utilities
+import plant_utilities
 
 
 def main(argv=None):
@@ -42,7 +43,7 @@ def main(argv=None):
     )
 
     # Start meshcat server:
-    meshcat = Meshcat(port=7005)
+    meshcat = Meshcat(port=7004)
 
     builder = DiagramBuilder()
     time_step = 0.0005
@@ -140,6 +141,12 @@ def main(argv=None):
     )
     trajectory_system = builder.AddSystem(driver_trajectory_system)
 
+    driver_plant_processor = plant_utilities.PlantPortProcessor(
+        plant=plant,
+        update_rate=update_rate,
+    )
+    plant_processor = builder.AddSystem(driver_plant_processor)
+
     # Connect Systems:
     # Plant -> Context System:
     builder.Connect(
@@ -167,9 +174,15 @@ def main(argv=None):
         taskspace_projection.get_input_port(driver_taskspace_projection.plant_context_port),
     )
 
-    # OSC Controller -> Plant:
+    # OSC Controller -> Plant Process:
     builder.Connect(
-        osc_controller.get_output_port(driver_osc_controller.torque_port),
+        osc_controller.get_output_port(driver_osc_controller.solution_port),
+        plant_processor.get_input_port(driver_plant_processor.solution_port),
+    )
+
+    # Plant Process -> Plant:
+    builder.Connect(
+        plant_processor.get_output_port(driver_plant_processor.plant_torque_port),
         plant.get_actuation_input_port(),
     )
 
