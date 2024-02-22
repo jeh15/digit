@@ -225,12 +225,21 @@ class MessagePublisher(LeafSystem):
             output.set_value(
                 MessageWrapper(self.message),
             )
+            # Reset message:
+            self.message = ''
 
         self.message_port = self.DeclareAbstractOutputPort(
             "message",
             alloc=lambda: make_message_wrapper_value(self.message),
             calc=publish_message,
         ).get_index()
+
+        def forced_message(context):
+            self.message = 'low-level-api'
+
+        self.DeclareForcedPublishEvent(
+            publish=forced_message,
+        )
 
 
 if __name__ == "__main__":

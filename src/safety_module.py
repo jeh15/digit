@@ -39,9 +39,6 @@ class SafetyController(LeafSystem):
         self.plant = plant
         self.update_rate = update_rate
 
-        # TODO(jeh15) This needs be taken out. Make a dedicated low-level-api trigger:
-        self.warmup_time = 1.0
-
         # Store Plant and Create Context:
         self.plant = plant
         self.plant_context = self.plant.CreateDefaultContext()
@@ -146,7 +143,7 @@ class SafetyController(LeafSystem):
         # Joint limits:
         q_min = self.plant.GetPositionLowerLimits()
         q_max = self.plant.GetPositionUpperLimits()
-        qd_lim = (60.0 * np.pi / 180.0) * np.ones(self.plant.num_velocities())
+        qd_lim = (90.0 * np.pi / 180.0) * np.ones(self.plant.num_velocities())
 
         # Torque Limits:
         leg_torque_limit = np.array(
@@ -160,18 +157,13 @@ class SafetyController(LeafSystem):
 
         # Check joint limits:
         message = ''
+        if np.any(q < q_min) or np.any(q > q_max):
+            print('Joint Limit Exceeded')
+            message = 'shutdown'
 
-        # TODO(jeh15) This needs be taken out. Make a dedicated low-level-api trigger:
-        if context.get_time() > self.warmup_time and context.get_time() < self.warmup_time + 0.1:
-            message = 'low-level-api'
-
-        # if np.any(q < q_min) or np.any(q > q_max):
-        #     print('Joint Limit Exceeded')
-        #     message = 'shutdown'
-
-        # if np.any(np.abs(qd) > qd_lim):
-        #     print('Velocity Limit Exceeded')
-        #     message = 'shutdown'
+        if np.any(np.abs(qd) > qd_lim):
+            print('Velocity Limit Exceeded')
+            message = 'shutdown'
 
         if np.any(np.abs(leg_torques) > np.tile(leg_torque_limit, 2)):
             print('Leg Torque Limit Exceeded')
@@ -205,5 +197,3 @@ class SafetyController(LeafSystem):
         message_state.set_value(
             MessageWrapper(message)
         )
-
-

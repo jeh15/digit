@@ -126,8 +126,7 @@ class TrajectorySystem(LeafSystem):
 
         # Declare Periodic Event: Update Trajectory Output
         def on_periodic(context, event):
-            if context.get_time() > self.warmup_time:
-                self.update(context, event)
+            self.update(context, event)
 
         self.DeclarePeriodicEvent(
             period_sec=self.update_rate,
@@ -163,7 +162,10 @@ class TrajectorySystem(LeafSystem):
         output.set_value(wrapper)
 
     def update(self, context, event):
-        position_target, rotation_target = self.desired_position(context)
+        if context.get_time() > self.warmup_time:
+            position_target, rotation_target = self.desired_position(context)
+        else:
+            position_target, rotation_target = self.default_position(context)
         loop_iterables = zip(
             self.abstract_states,
             position_target,
@@ -188,19 +190,10 @@ class TrajectorySystem(LeafSystem):
         base_ddx = np.zeros((3,))
         base_dx = np.zeros_like(base_ddx)
         # Update Base Position based on average foot position:
-        base_z = 0.8 + 0.2 * np.sin(self.index / 1000.0)
+        amplitude = 0.125
+        frequency = 500.0
+        base_z = (1.03 - amplitude) + amplitude * np.cos(self.index / frequency)
         base_x = np.array([0.046, 0.00, base_z])
-
-        # Position and Velocity Tracking:
-        # amplitude_scale = 0.3
-        # frequency_scale = 2000.0
-        # theta = amplitude_scale * np.sin(self.index / frequency_scale)
-        # dtheta = amplitude_scale / frequency_scale * np.cos(self.index / frequency_scale)
-        # ddtheta = -amplitude_scale / frequency_scale**2 * np.sin(self.index / frequency_scale)
-        # base_w = np.array([1.0, 0.0, 0.0, theta])
-        # base_w = base_w / np.linalg.norm(base_w)
-        # base_dw = np.array([0.0, 0.0, dtheta])
-        # base_ddw = np.array([0.0, 0.0, ddtheta])
 
         base_w = np.array([1.0, 0.0, 0.0, 0.0])
         base_dw = np.array([0.0, 0.0, 0.0])
@@ -234,7 +227,7 @@ class TrajectorySystem(LeafSystem):
         # Position:
         elbow_ddx = np.zeros_like(base_ddx)
         elbow_dx = np.zeros_like(elbow_ddx)
-        elbow_z = 1.13 + 0.2 * np.sin(self.index / 1000.0)
+        elbow_z = (1.13 - amplitude) + amplitude * np.cos(self.index / frequency)
         left_elbow_x = np.array([-0.11, 0.32, elbow_z])
         right_elbow_x = np.array([-0.11, -0.32, elbow_z])
         # Rotation:
@@ -262,6 +255,50 @@ class TrajectorySystem(LeafSystem):
             [hand_ddw, hand_dw, right_hand_w],
             [elbow_ddw, elbow_dw, left_elbow_w],
             [elbow_ddw, elbow_dw, right_elbow_w],
+        ]
+
+        return position_target, rotation_target
+
+    def default_position(self, context):
+        # default Tracking:
+        zero_ddx = np.zeros((3,))
+        zero_dx = np.zeros_like(zero_ddx)
+        zero_ddw = np.zeros((3,))
+        zero_dw = np.zeros_like(zero_ddw)
+        zero_w = np.array([1, 0, 0, 0])
+
+        # Default Base Position:
+        base_x = np.array([0.046, 0.00, 1.03])
+
+        # Default Foot Tracking:
+        left_foot_x = np.array([0.009, 0.100, 0.000])
+        right_foot_x = np.array([0.009, -0.100, 0.000])
+
+        # Default Hand Tracking:
+        left_hand_x = np.array([0.19, 0.3, 0.92])
+        right_hand_x = np.array([0.19, -0.3, 0.92])
+
+        # Elbow Tracking:
+        left_elbow_x = np.array([-0.11, 0.32, 1.13])
+        right_elbow_x = np.array([-0.11, -0.32, 1.13])
+
+        position_target = [
+            [zero_ddx, zero_dx, base_x],
+            [zero_ddx, zero_dx, left_foot_x],
+            [zero_ddx, zero_dx, right_foot_x],
+            [zero_ddx, zero_dx, left_hand_x],
+            [zero_ddx, zero_dx, right_hand_x],
+            [zero_ddx, zero_dx, left_elbow_x],
+            [zero_ddx, zero_dx, right_elbow_x],
+        ]
+        rotation_target = [
+            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, zero_w],
         ]
 
         return position_target, rotation_target

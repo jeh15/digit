@@ -109,6 +109,8 @@ def main(argv=None):
     # Initialize Systems:
     osc_rate = 1.0 / 100.0
     update_rate = 1.0 / 1000.0
+    warmup_time = 3.0
+    run_time = 30.0
 
     driver_osc_controller = controller_module.OSC(
         plant=plant,
@@ -134,6 +136,7 @@ def main(argv=None):
     driver_trajectory_system = trajectory_module.TrajectorySystem(
         plant=plant,
         update_rate=update_rate,
+        warmup_time=warmup_time,
     )
     trajectory_system = builder.AddSystem(driver_trajectory_system)
 
@@ -151,9 +154,12 @@ def main(argv=None):
     agility_publisher = builder.AddSystem(driver_agility_publisher)
 
     driver_message_handler = websocket_module.MessageHandler(
-        num_messengers=1,
+        num_messengers=2,
     )
     message_handler = builder.AddSystem(driver_message_handler)
+
+    driver_message_publisher = websocket_module.MessagePublisher()
+    message_publisher = builder.AddSystem(driver_message_publisher)
 
     driver_websocket = websocket_module.WebsocketModule(
         ip_address="localhost",
@@ -247,6 +253,12 @@ def main(argv=None):
         message_handler.get_input_port(driver_message_handler.input_ports[0]),
     )
 
+    # Message Publisher -> Message Handler:
+    builder.Connect(
+        message_publisher.get_output_port(driver_message_publisher.message_port),
+        message_handler.get_input_port(driver_message_handler.input_ports[1]),
+    )
+
     # Safety Controller -> Agility Publisher:
     builder.Connect(
         safety_controller.get_output_port(driver_safety_controller.command_port),
@@ -284,12 +296,16 @@ def main(argv=None):
     simulator.Initialize()
 
     # Soft start:
-    soft_start_time = 15.0
-    simulator.AdvanceTo(soft_start_time)
+    simulator.AdvanceTo(warmup_time)
 
-    # Advance simulation:
-    # target_time = soft_start_time + 10.0
-    # simulator.AdvanceTo(target_time)
+    # Send out message to initialize low-level-api:
+    context = simulator.get_context()
+    system_context = message_publisher.GetMyContextFromRoot(context)
+    message_publisher.ForcedPublish(system_context)
+
+    # low-level-api Control:
+    target_time = warmup_time + run_time
+    simulator.AdvanceTo(target_time)
 
 
 if __name__ == "__main__":
