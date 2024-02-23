@@ -3,6 +3,7 @@ from absl import app
 
 import numpy as np
 from pydrake.geometry import (
+    MeshcatVisualizer,
     Meshcat,
 )
 from pydrake.multibody.parsing import Parser
@@ -79,32 +80,32 @@ def main(argv=None):
     plant.Finalize()
     plant_context = plant.CreateDefaultContext()
 
-    # Set Default Position:
-    default_position = np.array(
-        [
-            9.99999899e-01, -4.61573022e-05, 4.74404927e-04, -1.40450514e-05,
-            4.59931778e-02, -1.77557628e-04, 1.03043887e+00,
-            3.65207270e-01, -7.69435176e-03, 3.15664484e-01, 3.57537366e-01,
-            -3.30752611e-01, -1.15794714e-02, -1.31615552e-01, 1.24398172e-01,
-            1.30620121e-01, -1.15685622e-02,
-            -1.50543436e-01, 1.09212242e+00, 1.59629876e-04, -1.39115280e-01,
-            -3.65746560e-01, 7.48726435e-03, -3.15664484e-01, -3.57609271e-01,
-            3.30800563e-01, 1.16105788e-02, 1.31500503e-01, -1.24536230e-01,
-            -1.30630449e-01, 1.11680197e-02,
-            1.50514674e-01, -1.09207448e+00, -1.74969684e-04, 1.39105692e-01,
-        ]
-    )
+    # # Set Default Position:
+    # default_position = np.array(
+    #     [
+    #         9.99999899e-01, -4.61573022e-05, 4.74404927e-04, -1.40450514e-05,
+    #         4.59931778e-02, -1.77557628e-04, 1.03043887e+00,
+    #         3.65207270e-01, -7.69435176e-03, 3.15664484e-01, 3.57537366e-01,
+    #         -3.30752611e-01, -1.15794714e-02, -1.31615552e-01, 1.24398172e-01,
+    #         1.30620121e-01, -1.15685622e-02,
+    #         -1.50543436e-01, 1.09212242e+00, 1.59629876e-04, -1.39115280e-01,
+    #         -3.65746560e-01, 7.48726435e-03, -3.15664484e-01, -3.57609271e-01,
+    #         3.30800563e-01, 1.16105788e-02, 1.31500503e-01, -1.24536230e-01,
+    #         -1.30630449e-01, 1.11680197e-02,
+    #         1.50514674e-01, -1.09207448e+00, -1.74969684e-04, 1.39105692e-01,
+    #     ]
+    # )
 
-    # Set Default State:
-    default_velocity = np.zeros((plant.num_velocities(),))
-    plant.SetPositions(
-        context=plant_context,
-        q=default_position,
-    )
-    plant.SetVelocities(
-        context=plant_context,
-        v=default_velocity,
-    )
+    # # Set Default State:
+    # default_velocity = np.zeros((plant.num_velocities(),))
+    # plant.SetPositions(
+    #     context=plant_context,
+    #     q=default_position,
+    # )
+    # plant.SetVelocities(
+    #     context=plant_context,
+    #     v=default_velocity,
+    # )
 
     # Initialize Systems:
     osc_rate = 1.0 / 100.0
@@ -231,6 +232,16 @@ def main(argv=None):
         pid_controller.get_input_port(driver_pid_controller.task_transform_translation_port),
     )
 
+    # Task Space Projection -> Trajectory Module:
+    builder.Connect(
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_transform_rotation_port),
+        trajectory_system.get_input_port(driver_trajectory_system.task_transform_rotation_port),
+    )
+    builder.Connect(
+        taskspace_projection.get_output_port(driver_taskspace_projection.task_transform_translation_port),
+        trajectory_system.get_input_port(driver_trajectory_system.task_transform_translation_port),
+    )
+
     # Task Space Projection -> OSC Controller:
     builder.Connect(
         taskspace_projection.get_output_port(driver_taskspace_projection.task_jacobian_port),
@@ -265,6 +276,16 @@ def main(argv=None):
         agility_publisher.get_input_port(driver_agility_publisher.command_port),
     )
 
+    # Add Meshcat Visualizer:
+    meshcat_visualizer = MeshcatVisualizer(
+        meshcat,
+    )
+    meshcat_visualizer.AddToBuilder(
+        builder=builder,
+        scene_graph=scene_graph,
+        meshcat=meshcat,
+    )
+
     # Build diagram:
     diagram = builder.Build()
 
@@ -272,17 +293,17 @@ def main(argv=None):
     simulator = Simulator(diagram)
     simulator.set_target_realtime_rate(1.0)
 
-    context = simulator.get_context()
-    plant_context = plant.GetMyContextFromRoot(context)
+    # context = simulator.get_context()
+    # plant_context = plant.GetMyContextFromRoot(context)
 
-    plant.SetPositions(
-        context=plant_context,
-        q=default_position,
-    )
-    plant.SetVelocities(
-        context=plant_context,
-        v=default_velocity,
-    )
+    # plant.SetPositions(
+    #     context=plant_context,
+    #     q=default_position,
+    # )
+    # plant.SetVelocities(
+    #     context=plant_context,
+    #     v=default_velocity,
+    # )
 
     # Initialize Digit Communication before Simulator Initialization:
     digit_api.initialize_communication(

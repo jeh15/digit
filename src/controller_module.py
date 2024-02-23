@@ -4,6 +4,7 @@ import numpy as np
 
 from pydrake.common.value import Value, AbstractValue
 from pydrake.common.eigen_geometry import Quaternion
+from pydrake.math import RollPitchYaw
 from pydrake.systems.framework import (
     BasicVector,
     LeafSystem,
@@ -520,7 +521,7 @@ class PID(LeafSystem):
         # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Base Tracking:
-        kp_position_base = 500.0
+        kp_position_base = 200.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
         kp_rotation_base = 100.0
         kd_rotation_base = 100 * np.sqrt(kp_rotation_base)
@@ -528,17 +529,17 @@ class PID(LeafSystem):
         # Feet Tracking:
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 25.0
+        kp_rotation_feet = 50.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Hand Tracking:
-        kp_position_hands = 400.0
+        kp_position_hands = 0.0
         kd_position_hands = 2 * np.sqrt(kp_position_hands)
         kp_rotation_hands = 0.0
         kd_rotation_hands = 2 * np.sqrt(kp_rotation_hands)
 
         # Elbow Tracking:
-        kp_position_elbows = 50.0
+        kp_position_elbows = 0.0
         kd_position_elbows = 2 * np.sqrt(kp_position_elbows)
         kp_rotation_elbows = 0.0
         kd_rotation_elbows = 2 * np.sqrt(kp_rotation_elbows)
@@ -581,12 +582,12 @@ class PID(LeafSystem):
         ]
 
         task_J = np.split(task_jacobian, 7)
-        task_position = np.split(task_transform_translation, 7)
-        task_rotation = np.split(task_transform_rotation, 7)
+        task_positions = np.split(task_transform_translation, 7)
+        task_rotations = np.split(task_transform_rotation, 7)
 
         loop_iterables = zip(
-            task_position,
-            task_rotation,
+            task_positions,
+            task_rotations,
             task_J,
             position_target,
             rotation_target,
@@ -594,6 +595,9 @@ class PID(LeafSystem):
         )
 
         # Calculate Desired Control:
+        if context.get_time() > 3.1:
+            print()
+
         control_input = []
         for position, rotation, J, x_target, w_target, gains in loop_iterables:
             position = position.flatten()
@@ -602,7 +606,8 @@ class PID(LeafSystem):
             task_rotation = Quaternion(wxyz=rotation)
             target_rotation = Quaternion(wxyz=w_target[2])
             # From Ickes, B. P. (1970): For control purposes the last three elements of the quaternion define the roll, pitch, and yaw rotational errors.
-            rotation_error = target_rotation.multiply(task_rotation.conjugate()).xyz()
+            rotation_error = target_rotation.multiply(task_rotation.conjugate())
+            rotation_error = RollPitchYaw(rotation_error).vector()
             position_control = x_target[0] + gains[1] * (x_target[1] - task_velocity[3:]) + gains[0] * (x_target[2] - position)
             rotation_control = w_target[0] + gains[2] * (w_target[1] - task_velocity[:3]) + gains[3] * (rotation_error)
             control_input.append(
@@ -611,6 +616,7 @@ class PID(LeafSystem):
 
         # Desired Accelerations:
         control_input = np.concatenate(control_input, axis=0)
+        # print(f"Control: {control_input}")
 
         # Update Abstract States:
         control_input_state = context.get_mutable_abstract_state(

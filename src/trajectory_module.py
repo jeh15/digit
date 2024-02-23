@@ -5,6 +5,7 @@ import numpy as np
 import numpy.typing as npt
 
 from pydrake.common.value import AbstractValue
+from pydrake.common.eigen_geometry import Quaternion
 from pydrake.systems.framework import (
     LeafSystem,
     Context,
@@ -12,6 +13,8 @@ from pydrake.systems.framework import (
     TriggerType,
 )
 from pydrake.multibody.plant import MultibodyPlant
+
+from context_utilities import make_context_wrapper_value
 
 # Trajectory Type:
 Trajectory = dict[str, npt.NDArray[np.float64]]
@@ -68,11 +71,25 @@ class TrajectorySystem(LeafSystem):
     ):
         super().__init__()
         self.plant = plant
+        self.plant_context = self.plant.CreateDefaultContext()
 
         self.update_rate = update_rate
         self.index = 0
 
         self.warmup_time = warmup_time
+
+        # (TODO:jeh15) Frame Names: This will be an input:
+        self.frame_names = [
+            "base_link",
+            "left-foot_link",
+            "right-foot_link",
+            "left-hand_link",
+            "right-hand_link",
+            "left-elbow_link",
+            "right-elbow_link",
+        ]
+        self.num_frames = len(self.frame_names)
+        self.initial_pose = {}
 
         # Abstract States: Trajectories
         self.base_index = self.DeclareAbstractState(
@@ -107,6 +124,15 @@ class TrajectorySystem(LeafSystem):
             self.right_elbow_index,
         ]
 
+        # Input Port: Task Space
+        self.task_transform_rotation_port = self.DeclareVectorInputPort(
+            "task_transform_rotation", 28,
+        ).get_index()
+        self.task_transform_translation_port = self.DeclareVectorInputPort(
+            "task_transform_translation", 21,
+        ).get_index()
+
+        # Output Port: Desired Trajectory
         self.trajectory_port = self.DeclareAbstractOutputPort(
             "trajectory",
             alloc=lambda: make_trajectory_wrapper_value(),
@@ -115,7 +141,7 @@ class TrajectorySystem(LeafSystem):
 
         # Declare Initialization Event: Update Trajectory Output
         def on_initialization(context, event):
-            self.update(context, event)
+            self.initialization(context, event)
 
         self.DeclareInitializationEvent(
             event=PublishEvent(
@@ -161,11 +187,66 @@ class TrajectorySystem(LeafSystem):
 
         output.set_value(wrapper)
 
+    def initialization(self, context, event):
+        task_transform_rotation = self.get_input_port(
+            self.task_transform_rotation_port,
+        ).Eval(context)
+        task_transform_translation = self.get_input_port(
+            self.task_transform_translation_port,
+        ).Eval(context)
+
+        # Reshape Matrices:
+        task_transform_rotation = np.reshape(
+            np.asarray(task_transform_rotation),
+            (-1, 4),
+        )
+        task_transform_translation = np.reshape(
+            np.asarray(task_transform_translation),
+            (-1, 3),
+        )
+
+        task_position = np.split(task_transform_translation, 7)
+        task_rotation = np.split(task_transform_rotation, 7)
+
+        loop_iterables = zip(
+            self.frame_names,
+            task_position,
+            task_rotation,
+        )
+
+        for name, position, rotation in loop_iterables:
+            position = position.flatten()
+            rotation = rotation.flatten()
+            self.initial_pose[name] = {
+                'rotation' : Quaternion(wxyz=rotation).wxyz(),
+                'position' : position,
+            }
+        
+        position_target, rotation_target = self.default_position(context)
+        loop_iterables = zip(
+            self.abstract_states,
+            position_target,
+            rotation_target,
+        )
+        for abstract_state, position, rotation in loop_iterables:
+            state = context.get_mutable_abstract_state(
+                abstract_state,
+            )
+            value = state.get_mutable_value()
+            value['x'] = position[2]
+            value['dx'] = position[1]
+            value['ddx'] = position[0]
+            value['w'] = rotation[2]
+            value['dw'] = rotation[1]
+            value['ddw'] = rotation[0]
+            state.set_value(value)
+
+
     def update(self, context, event):
-        if context.get_time() > self.warmup_time:
-            position_target, rotation_target = self.desired_position(context)
-        else:
-            position_target, rotation_target = self.default_position(context)
+        # if context.get_time() > self.warmup_time:
+        #     position_target, rotation_target = self.desired_position(context)
+        # else:
+        position_target, rotation_target = self.default_position(context)
         loop_iterables = zip(
             self.abstract_states,
             position_target,
@@ -265,22 +346,28 @@ class TrajectorySystem(LeafSystem):
         zero_dx = np.zeros_like(zero_ddx)
         zero_ddw = np.zeros((3,))
         zero_dw = np.zeros_like(zero_ddw)
-        zero_w = np.array([1, 0, 0, 0])
 
         # Default Base Position:
-        base_x = np.array([0.046, 0.00, 1.03])
+        base_x = self.initial_pose['base_link']['position']
+        base_w = self.initial_pose['base_link']['rotation']
 
         # Default Foot Tracking:
-        left_foot_x = np.array([0.009, 0.100, 0.000])
-        right_foot_x = np.array([0.009, -0.100, 0.000])
+        left_foot_x = self.initial_pose['left-foot_link']['position']
+        left_foot_w = self.initial_pose['left-foot_link']['rotation']
+        right_foot_x = self.initial_pose['right-foot_link']['position']
+        right_foot_w = self.initial_pose['right-foot_link']['rotation']
 
         # Default Hand Tracking:
-        left_hand_x = np.array([0.19, 0.3, 0.92])
-        right_hand_x = np.array([0.19, -0.3, 0.92])
+        left_hand_x = self.initial_pose['left-hand_link']['position']
+        left_hand_w = self.initial_pose['left-hand_link']['rotation']
+        right_hand_x = self.initial_pose['right-hand_link']['position']
+        right_hand_w = self.initial_pose['right-hand_link']['rotation']
 
         # Elbow Tracking:
-        left_elbow_x = np.array([-0.11, 0.32, 1.13])
-        right_elbow_x = np.array([-0.11, -0.32, 1.13])
+        left_elbow_x = self.initial_pose['left-elbow_link']['position']
+        left_elbow_w = self.initial_pose['left-elbow_link']['rotation']
+        right_elbow_x = self.initial_pose['right-elbow_link']['position']
+        right_elbow_w = self.initial_pose['right-elbow_link']['rotation']
 
         position_target = [
             [zero_ddx, zero_dx, base_x],
@@ -292,13 +379,13 @@ class TrajectorySystem(LeafSystem):
             [zero_ddx, zero_dx, right_elbow_x],
         ]
         rotation_target = [
-            [zero_ddw, zero_dw, zero_w],
-            [zero_ddw, zero_dw, zero_w],
-            [zero_ddw, zero_dw, zero_w],
-            [zero_ddw, zero_dw, zero_w],
-            [zero_ddw, zero_dw, zero_w],
-            [zero_ddw, zero_dw, zero_w],
-            [zero_ddw, zero_dw, zero_w],
+            [zero_ddw, zero_dw, base_w],
+            [zero_ddw, zero_dw, left_foot_w],
+            [zero_ddw, zero_dw, right_foot_w],
+            [zero_ddw, zero_dw, left_hand_w],
+            [zero_ddw, zero_dw, right_hand_w],
+            [zero_ddw, zero_dw, left_elbow_w],
+            [zero_ddw, zero_dw, right_elbow_w],
         ]
 
         return position_target, rotation_target
