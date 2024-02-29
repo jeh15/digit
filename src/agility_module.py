@@ -50,6 +50,8 @@ class AgilityContextSystem(LeafSystem):
             plant_context = wrapper.context
             # Set Drake's context:
             plant.SetPositionsAndVelocities(plant_context, x)
+            if context.get_time() > 3.01:
+                pass
 
         self.plant_context_port = self.DeclareAbstractOutputPort(
             "plant_context",

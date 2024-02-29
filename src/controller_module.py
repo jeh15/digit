@@ -510,27 +510,22 @@ class PID(LeafSystem):
         qd = self.plant.GetVelocities(self.plant_context)
 
         # Calculate Desired Control:
-        # Static Base Tracking:
-        # kp_position_base = 200.0
-        # kd_position_base = 2 * np.sqrt(kp_position_base)
-        # kp_rotation_base = 200.0
-        # kd_rotation_base = 2 * np.sqrt(kp_rotation_base)
-        # kp_position_feet = 0.0
-        # kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        # kp_rotation_feet = 100.0
-        # kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
 
         # Base Tracking:
         kp_position_base = 200.0
         kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 100.0
-        kd_rotation_base = 100 * np.sqrt(kp_rotation_base)
+        kp_rotation_base = 400.0
+        # kd_rotation_base = 2.0 * np.sqrt(kp_rotation_base)
+        kd_rotation_base = 2.0
+        # kp_rotation_base = np.array([200.0, 200.0, 100.0])
+        # kd_rotation_base = 2.0 * np.sqrt(kp_rotation_base)
 
         # Feet Tracking:
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 50.0
+        kp_rotation_feet = 200.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
+        # kd_rotation_feet = 50.0 * np.sqrt(100.0)
 
         # Hand Tracking:
         kp_position_hands = 0.0
@@ -594,11 +589,8 @@ class PID(LeafSystem):
             control_gains,
         )
 
-        # Calculate Desired Control:
-        if context.get_time() > 3.1:
-            print()
-
         control_input = []
+        index = 0
         for position, rotation, J, x_target, w_target, gains in loop_iterables:
             position = position.flatten()
             rotation = rotation.flatten()
@@ -606,17 +598,22 @@ class PID(LeafSystem):
             task_rotation = Quaternion(wxyz=rotation)
             target_rotation = Quaternion(wxyz=w_target[2])
             # From Ickes, B. P. (1970): For control purposes the last three elements of the quaternion define the roll, pitch, and yaw rotational errors.
-            rotation_error = target_rotation.multiply(task_rotation.conjugate())
-            rotation_error = RollPitchYaw(rotation_error).vector()
+            rotation_error = target_rotation.multiply(task_rotation.conjugate()).xyz()
+            # rotation_error = target_rotation.multiply(task_rotation.conjugate())
+            # rotation_error = RollPitchYaw(rotation_error).vector()
+            # if index == 0:
+            #     # print(f'Target Rotation: {RollPitchYaw(target_rotation).vector()}')
+            #     # print(f'Rotation: {RollPitchYaw(task_rotation).vector()}')
+            #     print(rotation_error)
             position_control = x_target[0] + gains[1] * (x_target[1] - task_velocity[3:]) + gains[0] * (x_target[2] - position)
-            rotation_control = w_target[0] + gains[2] * (w_target[1] - task_velocity[:3]) + gains[3] * (rotation_error)
+            rotation_control = w_target[0] + gains[3] * (w_target[1] - task_velocity[:3]) + gains[2] * (rotation_error)
             control_input.append(
                 np.concatenate([rotation_control, position_control])
             )
+            index += 1
 
         # Desired Accelerations:
         control_input = np.concatenate(control_input, axis=0)
-        # print(f"Control: {control_input}")
 
         # Update Abstract States:
         control_input_state = context.get_mutable_abstract_state(
