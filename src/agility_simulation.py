@@ -123,6 +123,7 @@ def main(argv=None):
         plant=plant,
         digit_idx=digit_idx,
         update_rate=update_rate,
+        warmup_time=warmup_time,
     )
     agility_publisher = builder.AddSystem(driver_agility_publisher)
 
@@ -134,8 +135,13 @@ def main(argv=None):
     driver_message_publisher = websocket_module.MessagePublisher()
     message_publisher = builder.AddSystem(driver_message_publisher)
 
+    # driver_websocket = websocket_module.WebsocketModule(
+    #     ip_address="localhost",
+    #     port=8080,
+    #     update_rate=update_rate,
+    # )
     driver_websocket = websocket_module.WebsocketModule(
-        ip_address="localhost",
+        ip_address="10.10.1.1",
         port=8080,
         update_rate=update_rate,
     )
@@ -266,8 +272,14 @@ def main(argv=None):
     simulator.set_target_realtime_rate(1.0)
 
     # Initialize Digit Communication before Simulator Initialization:
+    # digit_api.initialize_communication(
+    #     "127.0.0.1",
+    #     25501,
+    #     25500,
+    # )
+
     digit_api.initialize_communication(
-        "127.0.0.1",
+        "10.10.1.1",
         25501,
         25500,
     )

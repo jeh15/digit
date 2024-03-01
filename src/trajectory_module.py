@@ -347,7 +347,7 @@ class TrajectorySystem(LeafSystem):
         zero_dw = np.zeros_like(zero_ddw)
 
         # Default Base Position:
-        base_x = self.initial_pose['base_link']['position']
+        base_x = self.initial_pose['base_link']['position'] + np.array([0.0, 0.0, 0.3])
         base_w = self.initial_pose['base_link']['rotation']
 
         # Default Foot Tracking:

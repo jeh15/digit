@@ -330,6 +330,10 @@ class OSC(LeafSystem):
         )
         reaction_force_state.set_value(reaction_force)
 
+        print(f'Base Acceleration: {accelerations[:6]}')
+        print(f'Reaction Force: {reaction_force}')
+
+
         solution_wrapper = SolutionWrapper(
             accelerations=accelerations,
             torque=torque,
@@ -512,29 +516,29 @@ class PID(LeafSystem):
         # Calculate Desired Control:
 
         # Base Tracking:
-        kp_position_base = 200.0
-        kd_position_base = 2 * np.sqrt(kp_position_base)
-        kp_rotation_base = 400.0
+        kp_position_base = 100.0
+        kd_position_base = 2 * np.sqrt(10.0)
+        kp_rotation_base = 200.0
         # kd_rotation_base = 2.0 * np.sqrt(kp_rotation_base)
-        kd_rotation_base = 2.0
+        kd_rotation_base = 50.0
         # kp_rotation_base = np.array([200.0, 200.0, 100.0])
         # kd_rotation_base = 2.0 * np.sqrt(kp_rotation_base)
 
         # Feet Tracking:
         kp_position_feet = 0.0
         kd_position_feet = 2 * np.sqrt(kp_position_feet)
-        kp_rotation_feet = 200.0
+        kp_rotation_feet = 10.0
         kd_rotation_feet = 2 * np.sqrt(kp_rotation_feet)
         # kd_rotation_feet = 50.0 * np.sqrt(100.0)
 
         # Hand Tracking:
-        kp_position_hands = 0.0
+        kp_position_hands = 10.0
         kd_position_hands = 2 * np.sqrt(kp_position_hands)
         kp_rotation_hands = 0.0
         kd_rotation_hands = 2 * np.sqrt(kp_rotation_hands)
 
         # Elbow Tracking:
-        kp_position_elbows = 0.0
+        kp_position_elbows = 10.0
         kd_position_elbows = 2 * np.sqrt(kp_position_elbows)
         kp_rotation_elbows = 0.0
         kd_rotation_elbows = 2 * np.sqrt(kp_rotation_elbows)
@@ -579,6 +583,10 @@ class PID(LeafSystem):
         task_J = np.split(task_jacobian, 7)
         task_positions = np.split(task_transform_translation, 7)
         task_rotations = np.split(task_transform_rotation, 7)
+
+        # print(f"Desired: {trajectory.base_trajectory['x']}")
+        # print(f"Actual {task_positions[0].flatten()}")
+        # print(f'Foot Location: {task_positions[1].flatten()}')
 
         loop_iterables = zip(
             task_positions,

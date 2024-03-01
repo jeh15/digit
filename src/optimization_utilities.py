@@ -138,6 +138,8 @@ def initialize_program(
         ],
     )
     ub_reaction_forces = np.inf * np.ones((z_size,))
+    ub_reaction_forces[5] = 400.0
+    ub_reaction_forces[-1] = 400.0
     ub_torque = torque_bounds
     ub_box = np.concatenate(
         [
