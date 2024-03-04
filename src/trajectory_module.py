@@ -322,11 +322,23 @@ class TrajectorySystem(LeafSystem):
         zero_dw = np.zeros_like(zero_ddw)
 
         # Default Base Position:
+        frequency = 1.0
+        amplitude = 0.125
         t = context.get_time() - self.warmup_time
         base_x = self.initial_pose['base_link']['position'] + np.array([
             0.0,
             0.0,
-            0.1 * np.cos(t * np.pi),
+            amplitude * np.cos(t * frequency),
+        ])
+        base_dx = np.array([
+            0.0,
+            0.0,
+            -amplitude * frequency * np.sin(t * frequency),
+        ])
+        base_ddx = np.array([
+            0.0,
+            0.0,
+            -amplitude * frequency**2 * np.cos(t * frequency),
         ])
         base_w = self.initial_pose['base_link']['rotation']
 
@@ -346,24 +358,44 @@ class TrajectorySystem(LeafSystem):
         left_elbow_x = self.initial_pose['left-elbow_link']['position'] + np.array([
             0.0,
             0.0,
-            0.1 * np.cos(t * np.pi)
+            amplitude * np.cos(t * frequency)
+        ])
+        left_elbow_dx = np.array([
+            0.0,
+            0.0,
+            -amplitude * frequency * np.sin(t * frequency),
+        ])
+        left_elbow_ddx = np.array([
+            0.0,
+            0.0,
+            -amplitude * frequency**2 * np.cos(t * frequency),
         ])
         left_elbow_w = self.initial_pose['left-elbow_link']['rotation']
         right_elbow_x = self.initial_pose['right-elbow_link']['position'] + np.array([
             0.0,
             0.0,
-            0.1 * np.cos(t * np.pi)
+            amplitude * np.cos(t * frequency)
+        ])
+        right_elbow_dx = np.array([
+            0.0,
+            0.0,
+            -amplitude * frequency * np.sin(t * frequency),
+        ])
+        right_elbow_ddx = np.array([
+            0.0,
+            0.0,
+            -amplitude * frequency**2 * np.cos(t * frequency),
         ])
         right_elbow_w = self.initial_pose['right-elbow_link']['rotation']
 
         position_target = [
-            [zero_ddx, zero_dx, base_x],
+            [base_ddx, base_dx, base_x],
             [zero_ddx, zero_dx, left_foot_x],
             [zero_ddx, zero_dx, right_foot_x],
             [zero_ddx, zero_dx, left_hand_x],
             [zero_ddx, zero_dx, right_hand_x],
-            [zero_ddx, zero_dx, left_elbow_x],
-            [zero_ddx, zero_dx, right_elbow_x],
+            [left_elbow_ddx, left_elbow_dx, left_elbow_x],
+            [right_elbow_ddx, right_elbow_dx, right_elbow_x],
         ]
         rotation_target = [
             [zero_ddw, zero_dw, base_w],

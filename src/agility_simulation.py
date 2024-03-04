@@ -145,7 +145,7 @@ def main(argv=None):
     #     port=8080,
     #     update_rate=update_rate,
     # )
-    
+
     websocket = builder.AddSystem(driver_websocket)
 
     driver_safety_controller = safety_module.SafetyController(
