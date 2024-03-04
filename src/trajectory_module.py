@@ -218,10 +218,10 @@ class TrajectorySystem(LeafSystem):
             position = position.flatten()
             rotation = rotation.flatten()
             self.initial_pose[name] = {
-                'rotation' : Quaternion(wxyz=rotation).wxyz(),
-                'position' : position,
+                'rotation': Quaternion(wxyz=rotation).wxyz(),
+                'position': position,
             }
-        
+
         position_target, rotation_target = self.default_position(context)
         loop_iterables = zip(
             self.abstract_states,
@@ -242,10 +242,10 @@ class TrajectorySystem(LeafSystem):
             state.set_value(value)
 
     def update(self, context, event):
-        # if context.get_time() > self.warmup_time:
-        #     position_target, rotation_target = self.desired_position(context)
-        # else:
-        position_target, rotation_target = self.default_position(context)
+        if context.get_time() > self.warmup_time:
+            position_target, rotation_target = self.sinewave_trajectory(context)
+        else:
+            position_target, rotation_target = self.default_position(context)
         loop_iterables = zip(
             self.abstract_states,
             position_target,
@@ -264,81 +264,6 @@ class TrajectorySystem(LeafSystem):
             value['ddw'] = rotation[0]
             state.set_value(value)
 
-    # def desired_position(self, context):
-    #     # Base Tracking:
-    #     # Position:
-    #     base_ddx = np.zeros((3,))
-    #     base_dx = np.zeros_like(base_ddx)
-    #     # Update Base Position based on average foot position:
-    #     amplitude = 0.125
-    #     frequency = 500.0
-    #     base_z = (1.03 - amplitude) + amplitude * np.cos(self.index / frequency)
-    #     base_x = np.array([0.046, 0.00, base_z])
-
-    #     base_w = np.array([1.0, 0.0, 0.0, 0.0])
-    #     base_dw = np.array([0.0, 0.0, 0.0])
-    #     base_ddw = np.array([0.0, 0.0, 0.0])
-
-    #     # Foot Tracking:
-    #     # Position:
-    #     foot_ddx = np.zeros_like(base_ddx)
-    #     foot_dx = np.zeros_like(foot_ddx)
-    #     left_foot_x = np.array([0.009, 0.100, 0.000])
-    #     right_foot_x = np.array([0.009, -0.100, 0.000])
-    #     # Rotation:
-    #     foot_ddw = np.zeros_like(base_ddx)
-    #     foot_dw = np.zeros_like(foot_ddw)
-    #     left_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-    #     right_foot_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-    #     # Hand Tracking:
-    #     # Position:
-    #     hand_ddx = np.zeros_like(base_ddx)
-    #     hand_dx = np.zeros_like(hand_ddx)
-    #     left_hand_x = np.array([0.19, 0.3, 0.92])
-    #     right_hand_x = np.array([0.19, -0.3, 0.92])
-    #     # Rotation:
-    #     hand_ddw = np.zeros_like(base_ddx)
-    #     hand_dw = np.zeros_like(hand_ddw)
-    #     left_hand_w = np.array([1.0, 0.0, 0.0, 0.0])
-    #     right_hand_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-    #     # Elbow Tracking:
-    #     # Position:
-    #     elbow_ddx = np.zeros_like(base_ddx)
-    #     elbow_dx = np.zeros_like(elbow_ddx)
-    #     elbow_z = (1.13 - amplitude) + amplitude * np.cos(self.index / frequency)
-    #     left_elbow_x = np.array([-0.11, 0.32, elbow_z])
-    #     right_elbow_x = np.array([-0.11, -0.32, elbow_z])
-    #     # Rotation:
-    #     elbow_ddw = np.zeros_like(base_ddx)
-    #     elbow_dw = np.zeros_like(elbow_ddw)
-    #     left_elbow_w = np.array([1.0, 0.0, 0.0, 0.0])
-    #     right_elbow_w = np.array([1.0, 0.0, 0.0, 0.0])
-
-    #     self.index += 1
-
-    #     position_target = [
-    #         [base_ddx, base_dx, base_x],
-    #         [foot_ddx, foot_dx, left_foot_x],
-    #         [foot_ddx, foot_dx, right_foot_x],
-    #         [hand_ddx, hand_dx, left_hand_x],
-    #         [hand_ddx, hand_dx, right_hand_x],
-    #         [elbow_ddx, elbow_dx, left_elbow_x],
-    #         [elbow_ddx, elbow_dx, right_elbow_x],
-    #     ]
-    #     rotation_target = [
-    #         [base_ddw, base_dw, base_w],
-    #         [foot_ddw, foot_dw, left_foot_w],
-    #         [foot_ddw, foot_dw, right_foot_w],
-    #         [hand_ddw, hand_dw, left_hand_w],
-    #         [hand_ddw, hand_dw, right_hand_w],
-    #         [elbow_ddw, elbow_dw, left_elbow_w],
-    #         [elbow_ddw, elbow_dw, right_elbow_w],
-    #     ]
-
-    #     return position_target, rotation_target
-
     def default_position(self, context):
         # default Tracking:
         zero_ddx = np.zeros((3,))
@@ -347,7 +272,7 @@ class TrajectorySystem(LeafSystem):
         zero_dw = np.zeros_like(zero_ddw)
 
         # Default Base Position:
-        base_x = self.initial_pose['base_link']['position'] + np.array([0.0, 0.0, 0.3])
+        base_x = self.initial_pose['base_link']['position']
         base_w = self.initial_pose['base_link']['rotation']
 
         # Default Foot Tracking:
@@ -366,6 +291,69 @@ class TrajectorySystem(LeafSystem):
         left_elbow_x = self.initial_pose['left-elbow_link']['position']
         left_elbow_w = self.initial_pose['left-elbow_link']['rotation']
         right_elbow_x = self.initial_pose['right-elbow_link']['position']
+        right_elbow_w = self.initial_pose['right-elbow_link']['rotation']
+
+        position_target = [
+            [zero_ddx, zero_dx, base_x],
+            [zero_ddx, zero_dx, left_foot_x],
+            [zero_ddx, zero_dx, right_foot_x],
+            [zero_ddx, zero_dx, left_hand_x],
+            [zero_ddx, zero_dx, right_hand_x],
+            [zero_ddx, zero_dx, left_elbow_x],
+            [zero_ddx, zero_dx, right_elbow_x],
+        ]
+        rotation_target = [
+            [zero_ddw, zero_dw, base_w],
+            [zero_ddw, zero_dw, left_foot_w],
+            [zero_ddw, zero_dw, right_foot_w],
+            [zero_ddw, zero_dw, left_hand_w],
+            [zero_ddw, zero_dw, right_hand_w],
+            [zero_ddw, zero_dw, left_elbow_w],
+            [zero_ddw, zero_dw, right_elbow_w],
+        ]
+
+        return position_target, rotation_target
+
+    def sinewave_trajectory(self, context):
+        # default Tracking:
+        zero_ddx = np.zeros((3,))
+        zero_dx = np.zeros_like(zero_ddx)
+        zero_ddw = np.zeros((3,))
+        zero_dw = np.zeros_like(zero_ddw)
+
+        # Default Base Position:
+        t = context.get_time() - self.warmup_time
+        base_x = self.initial_pose['base_link']['position'] + np.array([
+            0.0,
+            0.0,
+            0.1 * np.cos(t * np.pi),
+        ])
+        base_w = self.initial_pose['base_link']['rotation']
+
+        # Default Foot Tracking:
+        left_foot_x = self.initial_pose['left-foot_link']['position']
+        left_foot_w = self.initial_pose['left-foot_link']['rotation']
+        right_foot_x = self.initial_pose['right-foot_link']['position']
+        right_foot_w = self.initial_pose['right-foot_link']['rotation']
+
+        # Default Hand Tracking:
+        left_hand_x = self.initial_pose['left-hand_link']['position']
+        left_hand_w = self.initial_pose['left-hand_link']['rotation']
+        right_hand_x = self.initial_pose['right-hand_link']['position']
+        right_hand_w = self.initial_pose['right-hand_link']['rotation']
+
+        # Elbow Tracking:
+        left_elbow_x = self.initial_pose['left-elbow_link']['position'] + np.array([
+            0.0,
+            0.0,
+            0.1 * np.cos(t * np.pi)
+        ])
+        left_elbow_w = self.initial_pose['left-elbow_link']['rotation']
+        right_elbow_x = self.initial_pose['right-elbow_link']['position'] + np.array([
+            0.0,
+            0.0,
+            0.1 * np.cos(t * np.pi)
+        ])
         right_elbow_w = self.initial_pose['right-elbow_link']['rotation']
 
         position_target = [

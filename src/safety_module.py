@@ -157,21 +157,21 @@ class SafetyController(LeafSystem):
 
         # Check joint limits:
         message = ''
-        if np.any(q < q_min) or np.any(q > q_max):
-            print('Joint Limit Exceeded')
-            message = 'shutdown'
+        # if np.any(q < q_min) or np.any(q > q_max):
+        #     print('Joint Limit Exceeded')
+        #     message = 'shutdown'
 
         # if np.any(np.abs(qd) > qd_lim):
         #     print('Velocity Limit Exceeded')
         #     message = 'shutdown'
 
-        if np.any(np.abs(leg_torques) > np.tile(leg_torque_limit, 2)):
-            print('Leg Torque Limit Exceeded')
-            message = 'shutdown'
+        # if np.any(np.abs(leg_torques) > np.tile(leg_torque_limit, 2)):
+        #     print('Leg Torque Limit Exceeded')
+        #     message = 'shutdown'
 
-        if np.any(np.abs(arm_torques) > np.tile(arm_torque_limit, 2)):
-            print('Arm Torque Limit Exceeded')
-            message = 'shutdown'
+        # if np.any(np.abs(arm_torques) > np.tile(arm_torque_limit, 2)):
+        #     print('Arm Torque Limit Exceeded')
+        #     message = 'shutdown'
 
         if message == 'shutdown':
             print('Safety Shutdown')

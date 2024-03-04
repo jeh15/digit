@@ -330,10 +330,6 @@ class OSC(LeafSystem):
         )
         reaction_force_state.set_value(reaction_force)
 
-        print(f'Base Acceleration: {accelerations[:6]}')
-        print(f'Reaction Force: {reaction_force}')
-
-
         solution_wrapper = SolutionWrapper(
             accelerations=accelerations,
             torque=torque,
