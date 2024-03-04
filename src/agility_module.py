@@ -102,12 +102,7 @@ class AgilityPublisher(LeafSystem):
             self.command_port,
         ).Eval(context)
 
-        # torque = np.zeros_like(command.torque_command)
-        # if context.get_time() >= self.warmup_time:
-        #     torque[self.digit_idx.actuation_idx['left_leg']] = 1.0
-        #     torque[self.digit_idx.actuation_idx['right_leg']] = 1.0
         torque_command = self.digit_idx.actuation_map(command.torque_command)
-        # torque_command = self.digit_idx.actuation_map(torque)
         velocity_command = command.velocity_command
         damping_command = command.damping_command
         fallback_opmode = command.fallback_opmode
