@@ -135,16 +135,16 @@ def main(argv=None):
     driver_message_publisher = websocket_module.MessagePublisher()
     message_publisher = builder.AddSystem(driver_message_publisher)
 
-    # driver_websocket = websocket_module.WebsocketModule(
-    #     ip_address="localhost",
-    #     port=8080,
-    #     update_rate=update_rate,
-    # )
     driver_websocket = websocket_module.WebsocketModule(
-        ip_address="10.10.1.1",
+        ip_address="localhost",
         port=8080,
         update_rate=update_rate,
     )
+    # driver_websocket = websocket_module.WebsocketModule(
+    #     ip_address="10.10.1.1",
+    #     port=8080,
+    #     update_rate=update_rate,
+    # )
 
     websocket = builder.AddSystem(driver_websocket)
 
@@ -279,17 +279,17 @@ def main(argv=None):
     simulator.set_target_realtime_rate(1.0)
 
     # Initialize Digit Communication before Simulator Initialization:
-    # digit_api.initialize_communication(
-    #     "127.0.0.1",
-    #     25501,
-    #     25500,
-    # )
-
     digit_api.initialize_communication(
-        "10.10.1.1",
+        "127.0.0.1",
         25501,
         25500,
     )
+
+    # digit_api.initialize_communication(
+    #     "10.10.1.1",
+    #     25501,
+    #     25500,
+    # )
 
     digit_api.wait_for_connection()
 

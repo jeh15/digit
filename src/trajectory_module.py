@@ -80,7 +80,10 @@ class TrajectorySystem(LeafSystem):
         self.warmup_time = warmup_time
         self.sinewave_time = 0.0
 
+        # Tracking Parameters:
         self.offset_height = 0.0
+        self.hand_offset = np.array([0.0, 0.0, 0.6])
+        self.elbow_offset = np.array([0.0, 0.0, 0.0])
 
         # (TODO:jeh15) Frame Names: This will be an input:
         self.frame_names = [
@@ -252,7 +255,7 @@ class TrajectorySystem(LeafSystem):
             state.set_value(value)
 
     def update(self, context, event):
-        if context.get_time() >= self.warmup_time + self.sinewave_time:
+        if context.get_time() >= self.warmup_time:
             position_target, rotation_target = self.stand_position(context)
         else:
             position_target, rotation_target = self.default_position(context)
@@ -331,6 +334,7 @@ class TrajectorySystem(LeafSystem):
         ).Eval(context).context
 
         # Get Transform of Base relative to World:
+        # Force Drakes World Frame Origin to be Base Frames Origin:
         base_transform, _, _ = dynamics_utilities.calculate_taskspace(
             plant=self.plant,
             context=self.plant_context,
@@ -350,11 +354,12 @@ class TrajectorySystem(LeafSystem):
         zero_dw = np.zeros_like(zero_ddw)
 
         # Default Base Position:
-        base_x = self.initial_pose['base_link']['position'] + np.array([
-            0.0,
-            0.0,
-            self.offset_height,
-        ])
+        # base_x = self.initial_pose['base_link']['position'] + np.array([
+        #     0.0,
+        #     0.0,
+        #     self.offset_height,
+        # ])
+        base_x = self.initial_pose['base_link']['position']
         base_w = self.initial_pose['base_link']['rotation']
 
         # Default Foot Tracking:
@@ -364,21 +369,21 @@ class TrajectorySystem(LeafSystem):
         right_foot_w = self.initial_pose['right-foot_link']['rotation']
 
         # Default Hand Tracking:
-        desired_left_hand_x = np.array([0.1, 0.268, -0.15])
+        desired_left_hand_x = np.array([0.1, 0.268, -0.15]) + self.hand_offset
         left_hand_x = rotation_matrix @ desired_left_hand_x + translation
         # left_hand_x = self.initial_pose['left-hand_link']['position']
         left_hand_w = self.initial_pose['left-hand_link']['rotation']
-        desired_right_hand_x = np.array([0.1, -0.268, -0.15])
+        desired_right_hand_x = np.array([0.1, -0.268, -0.15]) + self.hand_offset
         right_hand_x = rotation_matrix @ desired_right_hand_x + translation
         # right_hand_x = self.initial_pose['right-hand_link']['position']
         right_hand_w = self.initial_pose['right-hand_link']['rotation']
 
         # Elbow Tracking:
-        desired_left_elbow_x = np.array([-0.18, 0.3, 0.1])
+        desired_left_elbow_x = np.array([-0.18, 0.3, 0.1]) + self.elbow_offset
         left_elbow_x = rotation_matrix @ desired_left_elbow_x + translation
         # left_elbow_x = self.initial_pose['left-elbow_link']['position']
         left_elbow_w = self.initial_pose['left-elbow_link']['rotation']
-        desired_right_elbow_x = np.array([-0.18, -0.3, 0.1])
+        desired_right_elbow_x = np.array([-0.18, -0.3, 0.1]) + self.elbow_offset
         # right_elbow_x = self.initial_pose['right-elbow_link']['position']
         right_elbow_x = rotation_matrix @ desired_right_elbow_x + translation
         right_elbow_w = self.initial_pose['right-elbow_link']['rotation']

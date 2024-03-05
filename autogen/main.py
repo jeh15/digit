@@ -183,10 +183,10 @@ def objective(
     base_tracking_x_weight = 10.0
     foot_tracking_w_weight = 100.0
     foot_tracking_x_weight = 100.0
-    hand_tracking_w_weight = 10.0
-    hand_tracking_x_weight = 10.0
-    elbow_tracking_w_weight = 10.0
-    elbow_tracking_x_weight = 10.0
+    hand_tracking_w_weight = 1.0
+    hand_tracking_x_weight = 1.0
+    elbow_tracking_w_weight = 1.0
+    elbow_tracking_x_weight = 1.0
     base_error_w = base_tracking_w_weight * (ddx_base[:3] - desired_base[:3]) ** 2
     base_error_x = base_tracking_x_weight * (ddx_base[3:] - desired_base[3:]) ** 2
     left_foot_error_w = foot_tracking_w_weight * (ddx_left_foot[:3] - desired_left_foot[:3]) ** 2

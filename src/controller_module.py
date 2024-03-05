@@ -394,8 +394,8 @@ class PID(LeafSystem):
         # Parameters:
         self.update_rate = update_rate
 
-        # Poor Mans Timer:
-        self.index = 0.0
+        # Saturation Limits:
+        self.position_limit = 0.25
 
         # Abstract States: Control Input
         self.control_input_size = np.zeros(42)
@@ -513,10 +513,10 @@ class PID(LeafSystem):
 
         # Base Tracking:
         kp_position_base = 200.0
-        kd_position_base = 10.0
-        kp_rotation_base = 100.0
+        kd_position_base = 75.0
+        kp_rotation_base = 400.0
         # kd_rotation_base = 2.0 * np.sqrt(kp_rotation_base)
-        kd_rotation_base = 10.0
+        kd_rotation_base = 100.0
         # kp_rotation_base = np.array([200.0, 200.0, 100.0])
         # kd_rotation_base = 2.0 * np.sqrt(kp_rotation_base)
 
@@ -528,16 +528,16 @@ class PID(LeafSystem):
         kd_rotation_feet = 10.0
 
         # Hand Tracking:
-        kp_position_hands = 75.0
+        kp_position_hands = 300.0
         # kd_position_hands = 2 * np.sqrt(kp_position_hands)
-        kd_position_hands = 1.0
+        kd_position_hands = 20.0
         kp_rotation_hands = 0.0
         kd_rotation_hands = 2 * np.sqrt(kp_rotation_hands)
 
         # Elbow Tracking:
-        kp_position_elbows = 75.0
+        kp_position_elbows = 0.0
         # kd_position_elbows = 2.0 * np.sqrt(kp_position_elbows)
-        kd_position_elbows = 1.0
+        kd_position_elbows = 0.0
         kp_rotation_elbows = 0.0
         kd_rotation_elbows = 2 * np.sqrt(kp_rotation_elbows)
 
@@ -592,7 +592,6 @@ class PID(LeafSystem):
         )
 
         control_input = []
-        index = 0
         for position, rotation, J, x_target, w_target, gains in loop_iterables:
             position = position.flatten()
             rotation = rotation.flatten()
@@ -603,12 +602,18 @@ class PID(LeafSystem):
             rotation_error = target_rotation.multiply(task_rotation.conjugate()).xyz()
             # rotation_error = target_rotation.multiply(task_rotation.conjugate())
             # rotation_error = RollPitchYaw(rotation_error).vector()
-            position_control = x_target[0] + gains[1] * (x_target[1] - task_velocity[3:]) + gains[0] * (x_target[2] - position)
+            position_error = x_target[2] - position
+            if np.any(abs(position_error) >= self.position_limit):
+                position_error = np.where(
+                    abs(position_error) >= self.position_limit,
+                    np.sign(position_error) * self.position_limit,
+                    position_error,
+                )
+            position_control = x_target[0] + gains[1] * (x_target[1] - task_velocity[3:]) + gains[0] * (position_error)
             rotation_control = w_target[0] + gains[3] * (w_target[1] - task_velocity[:3]) + gains[2] * (rotation_error)
             control_input.append(
                 np.concatenate([rotation_control, position_control])
             )
-            index += 1
 
         # Desired Accelerations:
         control_input = np.concatenate(control_input, axis=0)
